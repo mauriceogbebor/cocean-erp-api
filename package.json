@@ -18,7 +18,8 @@
     "db:up": "docker compose up -d db",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "pnpm build && node dist/db/migrate.js",
-    "db:seed": "node dist/db/seed.js"
+    "db:seed": "node dist/db/seed.js",
+    "db:seed:sample": "node dist/db/seed-sample.js"
   },
   "dependencies": {
     "@cocean/contracts": "workspace:*",

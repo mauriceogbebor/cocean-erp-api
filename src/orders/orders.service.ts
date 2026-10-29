@@ -308,7 +308,16 @@ export class OrdersService {
       await tx
         .update(salesOrders)
         .set({
-          creditCheck: { ...pos, thisOrder: total, releasedBy: "finance" },
+          // Same shape as the check at entry: exposure includes this order.
+          creditCheck: {
+            limit: pos.limit,
+            balance: pos.balance,
+            openOrders: pos.openOrders,
+            thisOrder: total,
+            exposure: Math.round((pos.exposure + total) * 100) / 100,
+            over: 0,
+            releasedBy: "finance",
+          },
         })
         .where(eq(salesOrders.id, id));
       await this.setStatus(tx, id, "released", actor, "order.released");

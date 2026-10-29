@@ -96,48 +96,57 @@ export class AuthService {
    * one that was already used revokes every session for that user.
    */
   async refresh(token: string, actor: Actor, userAgent?: string) {
-    const [s] = await this.db
-      .select()
-      .from(sessions)
-      .where(eq(sessions.tokenHash, sha256(token)))
-      .limit(1);
     const expired = new UnauthorizedException(
       "Your session has expired. Sign in again.",
     );
-    if (!s) throw expired;
-    if (s.revokedAt) {
-      if (s.replacedBy) {
-        await this.db.transaction(async (tx) => {
-          await tx
-            .update(sessions)
-            .set({ revokedAt: new Date() })
-            .where(
-              and(eq(sessions.userId, s.userId), isNull(sessions.revokedAt)),
-            );
-          await this.audit.record(
-            tx,
-            { ...actor, userId: s.userId },
-            {
-              action: "auth.refresh_reuse",
-              entityType: "user",
-              entityId: s.userId,
-            },
-          );
-        });
-      }
-      throw expired;
-    }
-    if (s.expiresAt < new Date()) throw expired;
-    if (!(await this.access.loadUser(s.userId))) throw expired;
-
-    return this.db.transaction(async (tx) => {
+    // The row lock makes two simultaneous refreshes with one token take
+    // turns: the first rotates it, the second sees it used.
+    const outcome = await this.db.transaction(async (tx) => {
+      const [s] = await tx
+        .select()
+        .from(sessions)
+        .where(eq(sessions.tokenHash, sha256(token)))
+        .for("update")
+        .limit(1);
+      if (!s) return { kind: "expired" as const };
+      if (s.revokedAt)
+        return s.replacedBy
+          ? { kind: "reused" as const, userId: s.userId }
+          : { kind: "expired" as const };
+      if (s.expiresAt < new Date()) return { kind: "expired" as const };
+      if (!(await this.access.loadUser(s.userId)))
+        return { kind: "expired" as const };
       const pair = await this.issue(tx, s.userId, actor, userAgent);
       await tx
         .update(sessions)
         .set({ revokedAt: new Date(), replacedBy: pair.sessionId })
         .where(eq(sessions.id, s.id));
-      return pair;
+      return { kind: "ok" as const, pair };
     });
+    if (outcome.kind === "ok") return outcome.pair;
+    if (outcome.kind === "reused")
+      // A used token came back: someone may have copied it. End every session.
+      await this.db.transaction(async (tx) => {
+        await tx
+          .update(sessions)
+          .set({ revokedAt: new Date() })
+          .where(
+            and(
+              eq(sessions.userId, outcome.userId),
+              isNull(sessions.revokedAt),
+            ),
+          );
+        await this.audit.record(
+          tx,
+          { ...actor, userId: outcome.userId },
+          {
+            action: "auth.refresh_reuse",
+            entityType: "user",
+            entityId: outcome.userId,
+          },
+        );
+      });
+    throw expired;
   }
 
   async logout(token: string, actor: Actor) {

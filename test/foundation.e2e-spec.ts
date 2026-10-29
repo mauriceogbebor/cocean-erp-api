@@ -112,6 +112,18 @@ describe("health and sign-in", () => {
       .send({ refreshToken: second.body.refreshToken })
       .expect(401);
   });
+
+  it("rotates a token once even when two refreshes arrive together", async () => {
+    const t = await login(app, people.md.email, PASSWORD);
+    const both = await Promise.all(
+      [1, 2].map(() =>
+        request(app.getHttpServer())
+          .post("/v1/auth/refresh")
+          .send({ refreshToken: t.refreshToken }),
+      ),
+    );
+    expect(both.map((r) => r.status).sort()).toEqual([200, 401]);
+  });
 });
 
 describe("permissions and audit", () => {
@@ -255,6 +267,9 @@ describe("approvals", () => {
     expect(r.body.map((a: { ref: string }) => a.ref)).toEqual(
       expect.arrayContaining(["PAY-2026-10"]),
     );
+    expect(
+      r.body.find((a: { ref: string }) => a.ref === "PAY-2026-10"),
+    ).toMatchObject({ requestedByName: "Tunde Adeyemi", decidedByName: null });
     expect(r.body.map((a: { ref: string }) => a.ref)).not.toContain(
       "WO-2026-034",
     );

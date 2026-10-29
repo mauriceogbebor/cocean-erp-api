@@ -26,7 +26,8 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.js";
-import { approvalPolicies, approvalRequests } from "../db/schema.js";
+import { alias } from "drizzle-orm/pg-core";
+import { approvalPolicies, approvalRequests, users } from "../db/schema.js";
 import { AuditService } from "../audit/audit.service.js";
 import { ApprovalHandlers } from "./approval-handlers.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
@@ -35,6 +36,18 @@ import { DB } from "../common/tokens.js";
 
 type Row = typeof approvalRequests.$inferSelect;
 const view = (r: Row) => ({ ...r, amount: num(r.amount)! });
+const requester = alias(users, "requester");
+const decider = alias(users, "decider");
+/** A request with the names of who raised and who decided it. */
+const named = (r: {
+  request: Row;
+  requestedByName: string | null;
+  decidedByName: string | null;
+}) => ({
+  ...view(r.request),
+  requestedByName: r.requestedByName,
+  decidedByName: r.decidedByName,
+});
 
 @Injectable()
 export class ApprovalsService {
@@ -222,22 +235,29 @@ export class ApprovalsService {
     }
     if (scope === "raised")
       where.push(eq(approvalRequests.requestedBy, user.id));
-    const rows = await this.db
-      .select()
-      .from(approvalRequests)
+    const rows = await this.withNames()
       .where(where.length ? and(...where) : undefined)
       .orderBy(desc(approvalRequests.createdAt))
       .limit(200);
-    return rows.map(view);
+    return rows.map(named);
   }
 
   async get(id: string) {
-    const [r] = await this.db
-      .select()
-      .from(approvalRequests)
-      .where(eq(approvalRequests.id, id));
+    const [r] = await this.withNames().where(eq(approvalRequests.id, id));
     if (!r) throw new NotFoundException("Approval request not found");
-    return view(r);
+    return named(r);
+  }
+
+  private withNames() {
+    return this.db
+      .select({
+        request: approvalRequests,
+        requestedByName: requester.name,
+        decidedByName: decider.name,
+      })
+      .from(approvalRequests)
+      .leftJoin(requester, eq(requester.id, approvalRequests.requestedBy))
+      .leftJoin(decider, eq(decider.id, approvalRequests.decidedBy));
   }
 
   async policies() {

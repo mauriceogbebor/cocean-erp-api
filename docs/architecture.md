@@ -9,20 +9,24 @@ Two repositories:
 
 ## How the web app connects
 
-- The web app never talks to the database. It calls `https://<api>/v1/...`
-  from its server side (Next.js route handlers and server actions).
-- Sign-in goes through a Next.js server route that calls `/v1/auth/login` and
-  keeps the access and refresh tokens in httpOnly cookies; the browser never
-  sees them. The route refreshes the access token when it expires.
-- The web app's `lib/services` layer already isolates data access, so each
-  screen moves from mock data to the API without being rewritten.
+- The web app never talks to the database. Its server side (Server
+  Components and server actions under `/live`) calls `<COCEAN_API_URL>/v1/...`.
+- Sign-in is a server action that calls `/v1/auth/login` and keeps the access
+  and refresh tokens in httpOnly cookies; the browser never sees them.
+- The web app's `proxy.ts` refreshes the access token a minute before it
+  expires. A token is exchanged once per web process and the result shared
+  for 30 seconds, because pages and prefetches refresh at the same moment and
+  the API treats a reused refresh token as theft. The API locks the session
+  row while refreshing, so two refreshes can't both succeed. More than one
+  web server would need a shared store for that exchange (Redis).
+- The web app forwards `X-Forwarded-For`, so the audit trail records the
+  person's address, not the web server's.
 - CORS allows only the web app's origin (`WEB_ORIGIN`), for any calls made
   from the browser.
 - **Shared contracts.** `packages/contracts` is published as
-  `@cocean/contracts`. Until there is a private registry, the web app installs
-  it straight from this repo:
-  `"@cocean/contracts": "github:mauriceogbebor/cocean-erp-api#main&path:packages/contracts"`
-  (pnpm builds it on install). Bump the ref when a contract changes.
+  `@cocean/contracts`. The web app mirrors the few request schemas its forms
+  need until the package is installable from GitHub or a private registry:
+  `"@cocean/contracts": "github:mauriceogbebor/cocean-erp-api#main&path:packages/contracts"`.
 
 ## Inside the API
 

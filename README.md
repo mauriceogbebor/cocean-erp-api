@@ -24,6 +24,19 @@ pnpm dev                        # http://localhost:4000, restarts on change
 
 Check it: `curl localhost:4000/health`.
 
+### Sample data
+
+For development and Cocean's trial runs, load the people and records the
+clickable demo uses (Kelechi, Tunde, Amina and others, two customers, an
+approved price list, a supplier):
+
+```bash
+SAMPLE_PASSWORD=choose-a-password pnpm db:seed:sample
+```
+
+Everyone signs in as `first.last@cocean.dev` with that password. It refuses
+to run in production and does nothing if it has run before.
+
 ## Tests
 
 End-to-end tests rebuild a test database from scratch on every run.
