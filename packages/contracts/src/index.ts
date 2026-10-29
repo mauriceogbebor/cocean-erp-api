@@ -5,3 +5,4 @@ export * from "./schemas";
 export * from "./sales";
 export * from "./finance";
 export * from "./procurement";
+export * from "./stock";

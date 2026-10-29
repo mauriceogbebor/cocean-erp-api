@@ -20,6 +20,7 @@ const commercialRead: Permission[] = [
 ];
 const requester: Permission[] = [...read, "approvals.request"];
 const buyingRead: Permission[] = ["vendors.read", "purchase_orders.read"];
+const movementRead: Permission[] = ["stock.read", "liftings.read"];
 
 export const ROLES = {
   admin: {
@@ -37,6 +38,8 @@ export const ROLES = {
       "products.manage",
       "approvals.read",
       "approvals.policies.manage",
+      "stock.read",
+      "tanks.manage",
     ],
   },
   md: {
@@ -47,6 +50,7 @@ export const ROLES = {
       ...requester,
       ...commercialRead,
       ...buyingRead,
+      ...movementRead,
       "approvals.decide",
       "audit.read",
       "users.read",
@@ -61,6 +65,7 @@ export const ROLES = {
       ...requester,
       ...commercialRead,
       ...buyingRead,
+      ...movementRead,
       "approvals.decide",
       "audit.read",
     ],
@@ -78,6 +83,7 @@ export const ROLES = {
       "invoices.create",
       "orders.release",
       ...buyingRead,
+      ...movementRead,
       "bills.manage",
     ],
   },
@@ -91,6 +97,7 @@ export const ROLES = {
       "prices.manage",
       "orders.create",
       "orders.cancel",
+      "liftings.read",
     ],
   },
   procurement: {
@@ -116,13 +123,22 @@ export const ROLES = {
       "orders.read",
       "customers.read",
       "approvals.decide",
+      ...movementRead,
+      "liftings.plan",
     ],
   },
   depot: {
     name: "Loading supervisor",
     description:
       "Loads, seals, weighs and releases at the depot; receives deliveries.",
-    permissions: [...read, "purchase_orders.read", "goods.receive"],
+    permissions: [
+      ...read,
+      ...movementRead,
+      "purchase_orders.read",
+      "goods.receive",
+      "stock.dip",
+      "liftings.load",
+    ],
   },
   fleet: {
     name: "Fleet and maintenance manager",
@@ -138,7 +154,7 @@ export const ROLES = {
     name: "Security and HSE lead",
     description:
       "Investigates custody cases; signs inductions and calibrations.",
-    permissions: [...read, "audit.read"],
+    permissions: [...read, ...movementRead, "audit.read", "deliveries.resolve"],
   },
   lpg: {
     name: "LPG plant manager",

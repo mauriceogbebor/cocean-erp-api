@@ -90,8 +90,12 @@ export class CustomersService {
       })
       .from(customerLedger)
       .where(eq(customerLedger.customerId, c.id));
+    // Released orders count until invoiced; part-delivered ones count only
+    // what isn't invoiced yet, since those invoices are on the ledger.
     const [{ open }] = await exec
-      .select({ open: sql<string>`coalesce(sum(${salesOrders.total}), 0)` })
+      .select({
+        open: sql<string>`coalesce(sum(${salesOrders.total} - coalesce((select sum(i.total) from invoices i where i.order_id = "sales_orders"."id"), 0)), 0)`,
+      })
       .from(salesOrders)
       .where(
         and(

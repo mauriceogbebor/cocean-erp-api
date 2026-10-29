@@ -97,6 +97,20 @@ Not yet: requisitions before the PO, partial-price tolerances, returns to
 supplier, withholding tax on payment, and posting stock receipts to inventory
 (Phase 3).
 
+## Product movement (Phase 3), built
+
+| Concern    | How                                                                                                                                                                                                                                                                                                                                                               |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Stock      | `stock_movements` holds every unit into or out of a tank, signed; stock on hand is the sum. A trigger makes it append-only. Movements are posted with the tank row locked, and refused if a tank would go below empty or a receipt above its safe capacity.                                                                                                       |
+| Receipts   | Product bought on a purchase order goes into a named tank at the receiving site when the depot records the goods received.                                                                                                                                                                                                                                        |
+| Dips       | Within ±0.5% of book (or 50 units) the difference is booked at once. Beyond it a `variance` approval goes to Operations, valued at list price; approval books the variance as measured, refusal means dip again. One open variance per tank.                                                                                                                      |
+| Loading    | Operations plans a truck (plate and driver for now; Phase 4 links the fleet) against a released order, one drop per order line, never more than is left to load. The depot loads from the meter, names the tank and fits seals; stock leaves the tank then. The planner can't load.                                                                               |
+| Delivery   | Each drop gets a one-time link (192-bit token, stored hashed, 7 days). The receiver enters what arrived and the seal numbers blind; they never see the recorded figures, and the answer tells them nothing about the check. Seals that differ, or more than 0.5% short or over, make an exception. Seal numbers are shown only to planners, loaders and Security. |
+| Exceptions | Security closes an exception with a written finding. Until then the delivery can't be invoiced.                                                                                                                                                                                                                                                                   |
+| Invoicing  | Each confirmed delivery is invoiced for the quantity received, at the order's price. An order delivered by truck can't also be invoiced whole; it is invoiced once every line is loaded in full and every delivery invoiced. Credit exposure counts released orders less what is already invoiced against them.                                                   |
+
+Placeholders to agree with Cocean: the tolerances (`STOCK_RULES` in the contracts), whether customers pay for loaded or received quantity, and who absorbs transit loss. Not yet: temperature correction to standard volume (dips record temperature for it), tank-to-tank transfers, sending delivery links by SMS (the link is returned to the depot on loading), and rate limiting on the public confirmation endpoint.
+
 ## Conventions for every module
 
 1. Schema in `src/db/schema.ts`, then `pnpm db:generate --name <change>`.

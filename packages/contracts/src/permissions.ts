@@ -28,10 +28,20 @@ export const PERMISSIONS = {
   "invoices.create": "Invoice released orders",
   "vendors.read": "See suppliers",
   "vendors.manage": "Create suppliers and request bank detail changes",
-  "purchase_orders.read": "See purchase orders, goods received and supplier invoices",
-  "purchase_orders.manage": "Draft purchase orders and submit them for approval",
+  "purchase_orders.read":
+    "See purchase orders, goods received and supplier invoices",
+  "purchase_orders.manage":
+    "Draft purchase orders and submit them for approval",
   "goods.receive": "Record goods received against a purchase order",
-  "bills.manage": "Enter and match supplier invoices; request and record payment",
+  "bills.manage":
+    "Enter and match supplier invoices; request and record payment",
+  "stock.read": "See tanks, stock on hand and dips",
+  "tanks.manage": "Set up tanks and their opening stock",
+  "stock.dip": "Record tank dips",
+  "liftings.read": "See loadings and deliveries",
+  "liftings.plan": "Plan trucks against released orders",
+  "liftings.load": "Load, meter and seal trucks at the depot",
+  "deliveries.resolve": "Investigate and close delivery exceptions",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

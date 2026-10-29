@@ -20,8 +20,10 @@ import {
   purchaseOrders,
   sites,
   supplierBills,
+  tanks,
   vendors,
 } from "../db/schema.js";
+import { StockService } from "../stock/stock.service.js";
 import {
   ApprovalHandlers,
   type DecidedRequest,
@@ -44,6 +46,7 @@ export class PurchaseOrdersService {
     @Inject(DB) private readonly db: Db,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(ApprovalsService) private readonly approvals: ApprovalsService,
+    @Inject(StockService) private readonly stock: StockService,
     @Inject(ApprovalHandlers) handlers: ApprovalHandlers,
   ) {
     handlers.register("purchase_order", (tx, req, actor) =>
@@ -304,6 +307,36 @@ export class PurchaseOrdersService {
             `Line ${pl.lineNo} (${pl.description}): ${l.quantity} received but only ${left} ${pl.unit} still due`,
           );
       }
+      // Bulk product goes into a tank: one that holds it at the receiving site.
+      const tankFor = new Map<string, typeof tanks.$inferSelect>();
+      for (const l of input.lines) {
+        const pl = lines.find((x) => x.id === l.lineId)!;
+        const options = pl.productCode
+          ? await tx
+              .select()
+              .from(tanks)
+              .where(
+                and(
+                  eq(tanks.siteId, po.siteId),
+                  eq(tanks.productCode, pl.productCode),
+                  eq(tanks.active, true),
+                ),
+              )
+          : [];
+        if (!options.length) {
+          if (l.tankId)
+            throw new UnprocessableEntityException(
+              `Line ${pl.lineNo} doesn't go into a tank at this site`,
+            );
+          continue;
+        }
+        const tank = options.find((t) => t.id === l.tankId);
+        if (!tank)
+          throw new UnprocessableEntityException(
+            `Line ${pl.lineNo} (${pl.productCode}): choose the tank it went into (${options.map((t) => t.code).join(", ")})`,
+          );
+        tankFor.set(l.lineId, await this.stock.lockTank(tx, tank.id));
+      }
       const number = await nextNumber(tx, "GRN");
       const [grn] = await tx
         .insert(goodsReceipts)
@@ -321,8 +354,21 @@ export class PurchaseOrdersService {
           receiptId: grn.id,
           poLineId: l.lineId,
           quantity: String(l.quantity),
+          tankId: tankFor.get(l.lineId)?.id ?? null,
         })),
       );
+      for (const l of input.lines) {
+        const tank = tankFor.get(l.lineId);
+        if (tank)
+          await this.stock.post(tx, tank, {
+            tankId: tank.id,
+            kind: "receipt",
+            quantity: l.quantity,
+            ref: number,
+            docId: grn.id,
+            userId: user.id,
+          });
+      }
       for (const l of input.lines) {
         const pl = lines.find((x) => x.id === l.lineId)!;
         await tx

@@ -72,6 +72,16 @@ export class FinanceController {
     return this.ar.invoiceOrder(id, user, actor);
   }
 
+  @Post("deliveries/:id/invoice")
+  @RequirePermissions("invoices.create")
+  invoiceDelivery(
+    @Param("id", ParseUUIDPipe) id: string,
+    @CurrentUser() user: AuthUser,
+    @CurrentActor() actor: Actor,
+  ) {
+    return this.ar.invoiceDrop(id, user, actor);
+  }
+
   @Get("invoices")
   @RequirePermissions("finance.read")
   invoices(@Query(new ZodPipe(byCustomer)) q: z.infer<typeof byCustomer>) {

@@ -11,13 +11,15 @@ import {
   type AgeingBucket,
   type CreateReceiptInput,
 } from "@cocean/contracts";
-import { and, asc, desc, eq, lte, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, lte, ne, type SQL } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.js";
 import {
   customerLedger,
   customers,
   invoiceLines,
   invoices,
+  liftingDrops,
+  liftings,
   products,
   receipts,
   salesOrderLines,
@@ -176,21 +178,22 @@ export class ReceivablesService {
    */
   async invoiceOrder(orderId: string, user: AuthUser, actor: Actor) {
     return this.db.transaction(async (tx) => {
-      const [o] = await tx
-        .select()
-        .from(salesOrders)
-        .where(eq(salesOrders.id, orderId))
-        .for("update");
-      if (!o) throw new NotFoundException("Order not found");
+      const o = await this.lockOrder(tx, orderId);
       if (o.status !== "released")
         throw new ConflictException(
           `Only a released order can be invoiced (this one is ${o.status})`,
         );
-      const [c] = await tx
-        .select()
-        .from(customers)
-        .where(eq(customers.id, o.customerId))
-        .for("update");
+      const [lifting] = await tx
+        .select({ id: liftings.id })
+        .from(liftings)
+        .where(
+          and(eq(liftings.orderId, orderId), ne(liftings.status, "cancelled")),
+        )
+        .limit(1);
+      if (lifting)
+        throw new ConflictException(
+          "This order is being delivered by truck: invoice each delivery once the customer confirms it",
+        );
       const lines = await tx
         .select({
           line: salesOrderLines,
@@ -201,69 +204,219 @@ export class ReceivablesService {
         .innerJoin(products, eq(products.code, salesOrderLines.productCode))
         .where(eq(salesOrderLines.orderId, orderId))
         .orderBy(asc(salesOrderLines.lineNo));
-
-      const priced = lines.map(({ line, name, vatRate }) => {
-        const gross = kobo(line.amount);
-        const rate = Number(vatRate);
-        const vat = Math.round((gross * rate) / (1 + rate));
-        return { line, name, rate, gross, vat };
-      });
-      const totalK = priced.reduce((a, l) => a + l.gross, 0);
-      const vatK = priced.reduce((a, l) => a + l.vat, 0);
-      const issuedOn = lagosDate();
-      const dueOn = addDays(issuedOn, o.terms === "credit" ? c.creditDays : 0);
-      const number = await nextNumber(tx, "INV");
-
-      const [inv] = await tx
-        .insert(invoices)
-        .values({
-          number,
-          customerId: c.id,
-          orderId,
-          issuedOn,
-          dueOn,
-          subtotal: naira(totalK - vatK),
-          vat: naira(vatK),
-          total: naira(totalK),
-          createdBy: user.id,
-        })
-        .returning();
-      await tx.insert(invoiceLines).values(
-        priced.map(({ line, name, rate, gross, vat }) => ({
-          invoiceId: inv.id,
+      const inv = await this.issue(tx, o, user, actor, {
+        dropId: null,
+        lines: lines.map(({ line, name, vatRate }) => ({
           lineNo: line.lineNo,
           productCode: line.productCode,
           description: name,
           quantity: line.quantity,
           unit: line.unit,
           unitPrice: line.unitPrice,
-          amount: naira(gross - vat),
-          vatRate: String(rate),
-          vat: naira(vat),
+          grossK: kobo(line.amount),
+          vatRate: Number(vatRate),
         })),
-      );
-      await tx.insert(customerLedger).values({
-        customerId: c.id,
-        kind: "invoice",
-        ref: number,
-        docId: inv.id,
-        entryDate: issuedOn,
-        dueOn,
-        amount: naira(totalK),
-        createdBy: user.id,
       });
       await tx
         .update(salesOrders)
         .set({ status: "invoiced", updatedAt: new Date() })
         .where(eq(salesOrders.id, orderId));
-      await this.audit.record(tx, actor, {
-        action: "invoice.issued",
-        entityType: "invoice",
-        entityId: inv.id,
-        after: { number, order: o.number, total: totalK / 100, dueOn },
-      });
-      return this.getInvoice(inv.id, tx);
+      return this.getInvoice(inv, tx);
     });
+  }
+
+  /**
+   * Invoices one confirmed delivery for the quantity the customer received,
+   * at the order's price. The order is invoiced once every line is loaded in
+   * full and every delivery is invoiced.
+   */
+  async invoiceDrop(dropId: string, user: AuthUser, actor: Actor) {
+    return this.db.transaction(async (tx) => {
+      const [d] = await tx
+        .select({ drop: liftingDrops, lifting: liftings })
+        .from(liftingDrops)
+        .innerJoin(liftings, eq(liftings.id, liftingDrops.liftingId))
+        .where(eq(liftingDrops.id, dropId));
+      if (!d) throw new NotFoundException("Delivery not found");
+      const o = await this.lockOrder(tx, d.lifting.orderId);
+      const [drop] = await tx
+        .select()
+        .from(liftingDrops)
+        .where(eq(liftingDrops.id, dropId))
+        .for("update");
+      if (drop.status !== "delivered" && drop.status !== "resolved")
+        throw new ConflictException(
+          drop.status === "exception"
+            ? "This delivery has an open exception: Security closes it first"
+            : `Only a confirmed delivery can be invoiced (this one is ${drop.status.replace("_", " ")})`,
+        );
+      const [done] = await tx
+        .select({ number: invoices.number })
+        .from(invoices)
+        .where(eq(invoices.dropId, dropId));
+      if (done)
+        throw new ConflictException(
+          `This delivery is already invoiced as ${done.number}`,
+        );
+      const [{ line, name, vatRate }] = await tx
+        .select({
+          line: salesOrderLines,
+          name: products.name,
+          vatRate: products.vatRate,
+        })
+        .from(salesOrderLines)
+        .innerJoin(products, eq(products.code, salesOrderLines.productCode))
+        .where(eq(salesOrderLines.id, drop.orderLineId));
+      const quantity = Number(drop.receivedQuantity);
+      const inv = await this.issue(tx, o, user, actor, {
+        dropId,
+        lines: [
+          {
+            lineNo: line.lineNo,
+            productCode: line.productCode,
+            description: `${name}, ${d.lifting.number} (${d.lifting.truckPlate})`,
+            quantity: String(quantity),
+            unit: line.unit,
+            unitPrice: line.unitPrice,
+            grossK: Math.round(quantity * kobo(line.unitPrice)),
+            vatRate: Number(vatRate),
+          },
+        ],
+      });
+      if (await this.fullyDelivered(tx, o.id))
+        await tx
+          .update(salesOrders)
+          .set({ status: "invoiced", updatedAt: new Date() })
+          .where(eq(salesOrders.id, o.id));
+      return this.getInvoice(inv, tx);
+    });
+  }
+
+  /** Every line loaded in full, and every loaded delivery invoiced. */
+  private async fullyDelivered(tx: Tx, orderId: string) {
+    const lines = await tx
+      .select()
+      .from(salesOrderLines)
+      .where(eq(salesOrderLines.orderId, orderId));
+    const drops = await tx
+      .select({ drop: liftingDrops, invoice: invoices.id })
+      .from(liftingDrops)
+      .leftJoin(invoices, eq(invoices.dropId, liftingDrops.id))
+      .where(
+        and(
+          inArray(
+            liftingDrops.orderLineId,
+            lines.map((l) => l.id),
+          ),
+          ne(liftingDrops.status, "cancelled"),
+        ),
+      );
+    const loadedFully = lines.every(
+      (l) =>
+        drops
+          .filter((d) => d.drop.orderLineId === l.id)
+          .reduce((a, d) => a + Number(d.drop.loadedQuantity ?? 0), 0) >=
+        Number(l.quantity) - 1e-9,
+    );
+    return loadedFully && drops.every((d) => !!d.invoice);
+  }
+
+  private async lockOrder(tx: Tx, orderId: string) {
+    const [o] = await tx
+      .select()
+      .from(salesOrders)
+      .where(eq(salesOrders.id, orderId))
+      .for("update");
+    if (!o) throw new NotFoundException("Order not found");
+    return o;
+  }
+
+  /** Writes an invoice, its lines and its ledger entry. Prices are VAT-inclusive. */
+  private async issue(
+    tx: Tx,
+    o: typeof salesOrders.$inferSelect,
+    user: AuthUser,
+    actor: Actor,
+    doc: {
+      dropId: string | null;
+      lines: {
+        lineNo: number;
+        productCode: string;
+        description: string;
+        quantity: string;
+        unit: string;
+        unitPrice: string;
+        grossK: number;
+        vatRate: number;
+      }[];
+    },
+  ) {
+    const [c] = await tx
+      .select()
+      .from(customers)
+      .where(eq(customers.id, o.customerId))
+      .for("update");
+    const priced = doc.lines.map((l) => ({
+      ...l,
+      vatK: Math.round((l.grossK * l.vatRate) / (1 + l.vatRate)),
+    }));
+    const totalK = priced.reduce((a, l) => a + l.grossK, 0);
+    const vatK = priced.reduce((a, l) => a + l.vatK, 0);
+    const issuedOn = lagosDate();
+    const dueOn = addDays(issuedOn, o.terms === "credit" ? c.creditDays : 0);
+    const number = await nextNumber(tx, "INV");
+    const [inv] = await tx
+      .insert(invoices)
+      .values({
+        number,
+        customerId: c.id,
+        orderId: o.id,
+        dropId: doc.dropId,
+        issuedOn,
+        dueOn,
+        subtotal: naira(totalK - vatK),
+        vat: naira(vatK),
+        total: naira(totalK),
+        createdBy: user.id,
+      })
+      .returning();
+    await tx.insert(invoiceLines).values(
+      priced.map((l) => ({
+        invoiceId: inv.id,
+        lineNo: l.lineNo,
+        productCode: l.productCode,
+        description: l.description,
+        quantity: l.quantity,
+        unit: l.unit,
+        unitPrice: l.unitPrice,
+        amount: naira(l.grossK - l.vatK),
+        vatRate: String(l.vatRate),
+        vat: naira(l.vatK),
+      })),
+    );
+    await tx.insert(customerLedger).values({
+      customerId: c.id,
+      kind: "invoice",
+      ref: number,
+      docId: inv.id,
+      entryDate: issuedOn,
+      dueOn,
+      amount: naira(totalK),
+      createdBy: user.id,
+    });
+    await this.audit.record(tx, actor, {
+      action: "invoice.issued",
+      entityType: "invoice",
+      entityId: inv.id,
+      after: {
+        number,
+        order: o.number,
+        drop: doc.dropId,
+        total: totalK / 100,
+        dueOn,
+      },
+    });
+    return inv.id;
   }
 
   async getInvoice(id: string, exec: Db | Tx = this.db) {

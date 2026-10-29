@@ -27,6 +27,10 @@ import { BillsService } from "./procurement/bills.service.js";
 import { ProcurementController } from "./procurement/procurement.controller.js";
 import { PurchaseOrdersService } from "./procurement/purchase-orders.service.js";
 import { VendorsService } from "./procurement/vendors.service.js";
+import { LiftingsController } from "./logistics/liftings.controller.js";
+import { LiftingsService } from "./logistics/liftings.service.js";
+import { StockController } from "./stock/stock.controller.js";
+import { StockService } from "./stock/stock.service.js";
 import { PricingController } from "./pricing/pricing.controller.js";
 import { PricingService } from "./pricing/pricing.service.js";
 import { UsersController } from "./users/users.controller.js";
@@ -65,6 +69,8 @@ export class AppModule {
         OrdersController,
         FinanceController,
         ProcurementController,
+        StockController,
+        LiftingsController,
       ],
       providers: [
         { provide: ENV, useValue: env },
@@ -83,6 +89,8 @@ export class AppModule {
         VendorsService,
         PurchaseOrdersService,
         BillsService,
+        StockService,
+        LiftingsService,
         // Order matters: who you are, then what you may do.
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_GUARD, useClass: PermissionsGuard },

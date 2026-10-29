@@ -430,6 +430,8 @@ export const invoices = pgTable(
     orderId: uuid("order_id")
       .notNull()
       .references(() => salesOrders.id),
+    /** The delivery this invoice is for; null for a whole-order invoice. */
+    dropId: uuid("drop_id").references(() => liftingDrops.id),
     issuedOn: date("issued_on").notNull(),
     dueOn: date("due_on").notNull(),
     subtotal: numeric("subtotal", { precision: 18, scale: 2 }).notNull(),
@@ -442,8 +444,13 @@ export const invoices = pgTable(
   },
   (t) => [
     uniqueIndex("invoices_number_key").on(t.number),
-    /** One invoice per order until deliveries split them (Phase 3). */
-    uniqueIndex("invoices_order_key").on(t.orderId),
+    index("invoices_order_idx").on(t.orderId),
+    /** At most one whole-order invoice per order. */
+    uniqueIndex("invoices_whole_order_key")
+      .on(t.orderId)
+      .where(sql`drop_id is null`),
+    /** A delivery is invoiced once. Invoices without a drop cover a whole order. */
+    uniqueIndex("invoices_drop_key").on(t.dropId),
     index("invoices_customer_idx").on(t.customerId),
   ],
 );
@@ -629,6 +636,8 @@ export const goodsReceiptLines = pgTable(
       .notNull()
       .references(() => purchaseOrderLines.id),
     quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    /** For product bought in bulk: the tank it went into. */
+    tankId: uuid("tank_id").references(() => tanks.id),
   },
   (t) => [primaryKey({ columns: [t.receiptId, t.poLineId] })],
 );
@@ -703,4 +712,178 @@ export const supplierBillLines = pgTable(
     vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
   },
   (t) => [primaryKey({ columns: [t.billId, t.poLineId] })],
+);
+
+// ── Stock: tanks, an append-only stock ledger, dips ────────────────────────
+export const tanks = pgTable(
+  "tanks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+    code: text("code").notNull(),
+    productCode: text("product_code")
+      .notNull()
+      .references(() => products.code),
+    capacity: numeric("capacity", { precision: 14, scale: 3 }).notNull(),
+    safeCapacity: numeric("safe_capacity", {
+      precision: 14,
+      scale: 3,
+    }).notNull(),
+    active: boolean("active").notNull().default(true),
+    createdAt: created(),
+  },
+  (t) => [
+    uniqueIndex("tanks_code_key").on(t.code),
+    index("tanks_site_idx").on(t.siteId),
+  ],
+);
+
+export const stockMovementKind = pgEnum("stock_movement_kind", [
+  "opening",
+  "receipt",
+  "lifting",
+  "dip_adjustment",
+  "variance_adjustment",
+]);
+
+/**
+ * Every unit into or out of a tank, signed. Stock on hand is the sum.
+ * Append-only (trigger): a mistake is corrected by a new movement.
+ */
+export const stockMovements = pgTable(
+  "stock_movements",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    tankId: uuid("tank_id")
+      .notNull()
+      .references(() => tanks.id),
+    kind: stockMovementKind("kind").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    /** The document behind it: GRN-…, LI-…, a dip, an approval. */
+    ref: text("ref").notNull(),
+    docId: uuid("doc_id"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [index("stock_movements_tank_idx").on(t.tankId, t.id)],
+);
+
+export const dipStatus = pgEnum("dip_status", [
+  "within_tolerance",
+  "variance_pending",
+  "variance_approved",
+  "variance_rejected",
+]);
+
+export const dips = pgTable(
+  "dips",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tankId: uuid("tank_id")
+      .notNull()
+      .references(() => tanks.id),
+    dippedOn: date("dipped_on").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    temperature: numeric("temperature", { precision: 5, scale: 2 }),
+    /** Book stock when the dip was recorded, and the difference. */
+    book: numeric("book", { precision: 14, scale: 3 }).notNull(),
+    variance: numeric("variance", { precision: 14, scale: 3 }).notNull(),
+    status: dipStatus("status").notNull(),
+    notes: text("notes"),
+    recordedBy: uuid("recorded_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [index("dips_tank_idx").on(t.tankId, t.createdAt)],
+);
+
+// ── Logistics: liftings (one truck) and their drops (one delivery each) ────
+export const liftingStatus = pgEnum("lifting_status", [
+  "planned",
+  "in_transit",
+  "delivered",
+  "exception",
+  "cancelled",
+]);
+
+export const liftings = pgTable(
+  "liftings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => salesOrders.id),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+    truckPlate: text("truck_plate").notNull(),
+    driverName: text("driver_name").notNull(),
+    driverPhone: text("driver_phone").notNull(),
+    status: liftingStatus("status").notNull().default("planned"),
+    plannedBy: uuid("planned_by")
+      .notNull()
+      .references(() => users.id),
+    loadedBy: uuid("loaded_by").references(() => users.id),
+    loadedAt: timestamp("loaded_at", { withTimezone: true }),
+    cancelledReason: text("cancelled_reason"),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("liftings_number_key").on(t.number),
+    index("liftings_order_idx").on(t.orderId),
+  ],
+);
+
+export const dropStatus = pgEnum("drop_status", [
+  "planned",
+  "in_transit",
+  "delivered",
+  "exception",
+  "resolved",
+  "cancelled",
+]);
+
+export const liftingDrops = pgTable(
+  "lifting_drops",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    liftingId: uuid("lifting_id")
+      .notNull()
+      .references(() => liftings.id, { onDelete: "cascade" }),
+    orderLineId: uuid("order_line_id")
+      .notNull()
+      .references(() => salesOrderLines.id),
+    plannedQuantity: numeric("planned_quantity", {
+      precision: 14,
+      scale: 3,
+    }).notNull(),
+    tankId: uuid("tank_id").references(() => tanks.id),
+    loadedQuantity: numeric("loaded_quantity", { precision: 14, scale: 3 }),
+    /** Seals fitted at the depot. Never shown to the receiver or the driver. */
+    seals: jsonb("seals").$type<string[]>(),
+    status: dropStatus("status").notNull().default("planned"),
+    /** sha256 of the receiver's one-time link token. */
+    tokenHash: text("token_hash"),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    receiverName: text("receiver_name"),
+    receivedQuantity: numeric("received_quantity", { precision: 14, scale: 3 }),
+    receivedSeals: jsonb("received_seals").$type<string[]>(),
+    receiverNotes: text("receiver_notes"),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    /** Why the delivery didn't reconcile; empty when it did. */
+    exceptions: jsonb("exceptions").$type<string[]>(),
+    finding: text("finding"),
+    resolvedBy: uuid("resolved_by").references(() => users.id),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("lifting_drops_lifting_idx").on(t.liftingId),
+    index("lifting_drops_line_idx").on(t.orderLineId),
+    uniqueIndex("lifting_drops_token_key").on(t.tokenHash),
+  ],
 );

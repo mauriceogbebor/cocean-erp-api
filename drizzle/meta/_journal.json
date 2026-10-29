@@ -36,6 +36,13 @@
       "when": 1793270527499,
       "tag": "0004_procurement",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793273046077,
+      "tag": "0005_product_movement",
+      "breakpoints": true
     }
   ]
 }

@@ -4,14 +4,23 @@ const isoDate = z.iso.date();
 const phone = z
   .string()
   .trim()
-  .regex(/^(\+234|0)[789][01]\d{8}$/, "Enter a Nigerian number, like 08031234567");
+  .regex(
+    /^(\+234|0)[789][01]\d{8}$/,
+    "Enter a Nigerian number, like 08031234567",
+  );
 
 /** Where a supplier is paid. Changes only through Finance's approval. */
 export const vendorBankSchema = z.object({
   bankName: z.string().trim().min(2).max(60),
-  accountNumber: z.string().trim().regex(/^\d{10}$/, "A NUBAN account number has 10 digits"),
+  accountNumber: z
+    .string()
+    .trim()
+    .regex(/^\d{10}$/, "A NUBAN account number has 10 digits"),
   accountName: z.string().trim().min(3).max(120),
-  reason: z.string().trim().min(10, "Say why, and how the details were confirmed"),
+  reason: z
+    .string()
+    .trim()
+    .min(10, "Say why, and how the details were confirmed"),
 });
 export type VendorBankInput = z.infer<typeof vendorBankSchema>;
 
@@ -38,7 +47,10 @@ export type CreateVendorInput = z.infer<typeof createVendorSchema>;
 export const updateVendorSchema = createVendorSchema
   .omit({ code: true, bank: true })
   .partial()
-  .extend({ active: z.boolean().optional(), email: z.email().nullable().optional() });
+  .extend({
+    active: z.boolean().optional(),
+    email: z.email().nullable().optional(),
+  });
 
 const poLine = z.object({
   /** Stock items name a product; services and spares leave it out. */
@@ -63,14 +75,23 @@ export const createPurchaseOrderSchema = purchaseOrderLinesSchema.extend({
   justification: z.string().trim().min(10),
   quoteRef: z.string().trim().max(60).optional(),
 });
-export type CreatePurchaseOrderInput = z.infer<typeof createPurchaseOrderSchema>;
+export type CreatePurchaseOrderInput = z.infer<
+  typeof createPurchaseOrderSchema
+>;
 
 export const goodsReceiptSchema = z.object({
   receivedOn: isoDate,
   /** The supplier's delivery note or waybill number. */
   deliveryNote: z.string().trim().min(2).max(60),
   lines: z
-    .array(z.object({ lineId: z.uuid(), quantity: z.number().positive() }))
+    .array(
+      z.object({
+        lineId: z.uuid(),
+        quantity: z.number().positive(),
+        /** Bulk product goes into a tank at the receiving site. */
+        tankId: z.uuid().optional(),
+      }),
+    )
     .min(1),
   notes: z.string().trim().max(500).optional(),
 });

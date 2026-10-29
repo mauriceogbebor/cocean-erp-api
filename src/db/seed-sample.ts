@@ -12,13 +12,15 @@ import {
   priceListLines,
   priceLists,
   sites,
+  stockMovements,
+  tanks,
   userRoles,
   users,
   vendors,
 } from "./schema.js";
 
 /**
- * Sample people and records for development and Cocean's trial runs: the
+ * Sample people and records (customers, prices, tanks with stock, a supplier) for development and Cocean's trial runs: the
  * same names as the clickable demo, so both tell one story. Records are
  * inserted directly (already approved), not through the approval flow.
  * Refuses to run in production, and does nothing if it has run before.
@@ -211,6 +213,44 @@ export async function seedSample(
         price,
       })),
     );
+
+    const [onne] = await tx
+      .select()
+      .from(sites)
+      .where(eq(sites.code, "ONN-DEP"));
+    const tankRows = await tx
+      .insert(tanks)
+      .values([
+        {
+          siteId: onne.id,
+          code: "ONN-T01",
+          productCode: "AGO",
+          capacity: "1000000",
+          safeCapacity: "950000",
+        },
+        {
+          siteId: onne.id,
+          code: "ONN-T02",
+          productCode: "PMS",
+          capacity: "800000",
+          safeCapacity: "760000",
+        },
+      ])
+      .returning();
+    await tx.insert(stockMovements).values([
+      {
+        tankId: tankRows[0].id,
+        kind: "opening",
+        quantity: "612400",
+        ref: "OPENING",
+      },
+      {
+        tankId: tankRows[1].id,
+        kind: "opening",
+        quantity: "418900",
+        ref: "OPENING",
+      },
+    ]);
 
     await tx.insert(vendors).values({
       code: "VEN-031",
