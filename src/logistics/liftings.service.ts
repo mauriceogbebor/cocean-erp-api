@@ -19,6 +19,7 @@ import type { Db, Tx } from "../db/client.js";
 import {
   customerSites,
   customers,
+  invoices,
   liftingDrops,
   liftings,
   salesOrderLines,
@@ -107,6 +108,7 @@ export class LiftingsService {
         line: salesOrderLines,
         site: customerSites.name,
         tank: tanks.code,
+        invoice: invoices.number,
       })
       .from(liftingDrops)
       .innerJoin(
@@ -118,6 +120,7 @@ export class LiftingsService {
         eq(customerSites.id, salesOrderLines.deliverySiteId),
       )
       .leftJoin(tanks, eq(tanks.id, liftingDrops.tankId))
+      .leftJoin(invoices, eq(invoices.dropId, liftingDrops.id))
       .where(eq(liftingDrops.liftingId, id))
       .orderBy(asc(salesOrderLines.lineNo));
     return {
@@ -126,7 +129,7 @@ export class LiftingsService {
       customerName: r.customer,
       siteName: r.site,
       drops: drops.map(
-        ({ drop: { tokenHash: _, ...d }, line, site, tank }) => ({
+        ({ drop: { tokenHash: _, ...d }, line, site, tank, invoice }) => ({
           ...d,
           plannedQuantity: num(d.plannedQuantity)!,
           loadedQuantity: num(d.loadedQuantity),
@@ -135,6 +138,7 @@ export class LiftingsService {
           unit: line.unit,
           deliverySiteName: site,
           tankCode: tank,
+          invoiceNumber: invoice,
           ...(seeSeals ? {} : { seals: null, receivedSeals: null }),
         }),
       ),

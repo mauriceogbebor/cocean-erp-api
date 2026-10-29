@@ -475,6 +475,10 @@ describe("loading and delivery", () => {
     expect(
       (await u.sales.get(`/v1/orders/${ids.order}`).expect(200)).body.status,
     ).toBe("invoiced");
+    const done = await u.finance.get(`/v1/liftings/${ids.lifting}`).expect(200);
+    expect(
+      done.body.drops.map((d: { invoiceNumber: string }) => d.invoiceNumber),
+    ).toEqual([expect.stringMatching(/^INV-/), expect.stringMatching(/^INV-/)]);
     const after = await u.sales
       .get(`/v1/customers/${ids.customer}`)
       .expect(200);

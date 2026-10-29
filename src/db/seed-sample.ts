@@ -79,6 +79,12 @@ export const SAMPLE_PEOPLE: {
     name: "Sani Garba",
     roles: ["depot"],
   },
+  {
+    key: "security",
+    email: "musa.abdullahi@cocean.dev",
+    name: "Musa Abdullahi",
+    roles: ["security"],
+  },
 ];
 
 export async function seedSample(
@@ -259,6 +265,16 @@ export async function seedSample(
       bankName: "Zenith Bank",
       accountNumber: "1012345678",
       accountName: "DELTA TYRES AND PARTS LTD",
+      bankStatus: "verified",
+      bankVerifiedAt: new Date(),
+    });
+    await tx.insert(vendors).values({
+      code: "VEN-040",
+      name: "Gulf Products Trading Ltd",
+      address: "Plot 3, Trans-Amadi Industrial Layout, Port Harcourt",
+      bankName: "Access Bank",
+      accountNumber: "0691111111",
+      accountName: "GULF PRODUCTS TRADING LTD",
       bankStatus: "verified",
       bankVerifiedAt: new Date(),
     });

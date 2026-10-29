@@ -27,8 +27,8 @@ Check it: `curl localhost:4000/health`.
 ### Sample data
 
 For development and Cocean's trial runs, load the people and records the
-clickable demo uses (Kelechi, Tunde, Amina and others, two customers, an
-approved price list, tanks at Onne with stock, a supplier):
+clickable demo uses (Kelechi, Adaeze, Tunde, Amina, Chidinma, Ifeoma, Chinonso, Sani and Musa; two customers, an
+approved price list, tanks at Onne with stock, two suppliers):
 
 ```bash
 SAMPLE_PASSWORD=choose-a-password pnpm db:seed:sample
