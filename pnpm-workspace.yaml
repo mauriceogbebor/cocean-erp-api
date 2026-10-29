@@ -6,3 +6,8 @@ packages:
 # drizzle-kit uses esbuild, which installs its platform binary on install.
 onlyBuiltDependencies:
   - esbuild
+
+# drizzle-kit still pulls an old esbuild (0.18) through @esbuild-kit; force a
+# patched one (GHSA-67mh-4wv8-2f99). Dev tooling only.
+overrides:
+  "@esbuild-kit/core-utils>esbuild": "0.25.12"
