@@ -25,9 +25,10 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
-import type { Db } from "../db/client.js";
+import type { Db, Tx } from "../db/client.js";
 import { approvalPolicies, approvalRequests } from "../db/schema.js";
 import { AuditService } from "../audit/audit.service.js";
+import { ApprovalHandlers } from "./approval-handlers.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
 import { num } from "../common/num.js";
 import { DB } from "../common/tokens.js";
@@ -40,6 +41,7 @@ export class ApprovalsService {
   constructor(
     @Inject(DB) private readonly db: Db,
     @Inject(AuditService) private readonly audit: AuditService,
+    @Inject(ApprovalHandlers) private readonly handlers: ApprovalHandlers,
   ) {}
 
   /** The active band for this kind where min <= amount < max. */
@@ -69,41 +71,61 @@ export class ApprovalsService {
   }
 
   async create(input: CreateApprovalInput, user: AuthUser, actor: Actor) {
+    if (this.handlers.has(input.kind))
+      throw new UnprocessableEntityException(
+        `A ${input.kind.replace("_", " ")} request is raised from the record it is about, not directly`,
+      );
+    return this.db.transaction((tx) =>
+      this.createIn(tx, input, user.id, actor),
+    );
+  }
+
+  /**
+   * Raises a request inside the caller's transaction, so the record that
+   * needs approval and its request are saved together. `payload` is what
+   * approving applies; the kind's handler reads it.
+   */
+  async createIn(
+    tx: Tx,
+    input: CreateApprovalInput,
+    requestedBy: string,
+    actor: Actor,
+    payload?: unknown,
+  ) {
     const policy = await this.route(input.kind, input.amount);
-    return this.db.transaction(async (tx) => {
-      const [open] = await tx
-        .select({ id: approvalRequests.id })
-        .from(approvalRequests)
-        .where(
-          and(
-            eq(approvalRequests.kind, input.kind),
-            eq(approvalRequests.ref, input.ref),
-            eq(approvalRequests.status, "pending"),
-          ),
-        )
-        .limit(1);
-      if (open)
-        throw new ConflictException(
-          `${input.ref} already has a pending request for this`,
-        );
-      const [r] = await tx
-        .insert(approvalRequests)
-        .values({
-          ...input,
-          amount: String(input.amount),
-          requestedBy: user.id,
-          approverRole: policy.approverRole,
-          policyId: policy.id,
-        })
-        .returning();
-      await this.audit.record(tx, actor, {
-        action: "approval.requested",
-        entityType: "approval",
-        entityId: r.id,
-        after: r,
-      });
-      return view(r);
+    const [open] = await tx
+      .select({ id: approvalRequests.id })
+      .from(approvalRequests)
+      .where(
+        and(
+          eq(approvalRequests.kind, input.kind),
+          eq(approvalRequests.ref, input.ref),
+          eq(approvalRequests.status, "pending"),
+        ),
+      )
+      .limit(1);
+    if (open)
+      throw new ConflictException(
+        `${input.ref} already has a pending request for this`,
+      );
+    const [r] = await tx
+      .insert(approvalRequests)
+      .values({
+        ...input,
+        amount: String(input.amount),
+        requestedBy,
+        approverRole: policy.approverRole,
+        policyId: policy.id,
+        payload: payload ?? null,
+      })
+      .returning();
+    await this.audit.record(tx, actor, {
+      action: "approval.requested",
+      entityType: "approval",
+      entityId: r.id,
+      after: r,
     });
+    return view(r);
   }
 
   /**
@@ -150,6 +172,7 @@ export class ApprovalsService {
         before: { status: r.status },
         after: { status: after.status, note: after.decisionNote },
       });
+      await this.handlers.run(tx, after, actor);
       return view(after);
     });
   }
@@ -179,6 +202,7 @@ export class ApprovalsService {
         entityType: "approval",
         entityId: id,
       });
+      await this.handlers.run(tx, after, actor);
       return view(after);
     });
   }

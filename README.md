@@ -49,6 +49,19 @@ pnpm test        # TEST_DATABASE_URL defaults to postgres://cocean:cocean@localh
 | POST               | /v1/approvals                                                                              | approvals.request                                    |
 | POST               | /v1/approvals/:id/decide                                                                   | approvals.decide, the routed role, and not the maker |
 | POST               | /v1/approvals/:id/withdraw                                                                 | approvals.request, maker only                        |
+| GET                | /v1/customers · /v1/customers/:id (with sites and credit position)                         | customers.read                                       |
+| POST · PATCH       | /v1/customers · /v1/customers/:id · POST /v1/customers/:id/sites                           | customers.manage                                     |
+| POST               | /v1/customers/:id/credit-terms (raises a credit_limit approval)                            | customers.manage, approvals.request                  |
+| GET                | /v1/price-lists · /v1/price-lists/in-force?date= · /v1/price-lists/:id                     | prices.read                                          |
+| POST · PUT         | /v1/price-lists · /v1/price-lists/:id/lines (draft only)                                   | prices.manage                                        |
+| POST               | /v1/price-lists/:id/submit (raises a price_list approval)                                  | prices.manage, approvals.request                     |
+| GET                | /v1/orders?status&customerId · /v1/orders/:id                                              | orders.read                                          |
+| POST               | /v1/orders                                                                                 | orders.create                                        |
+| POST               | /v1/orders/:id/override (raises a credit_override approval)                                | orders.create, approvals.request                     |
+| POST               | /v1/orders/:id/cancel                                                                      | orders.cancel                                        |
+
+`credit_limit`, `price_list` and `credit_override` requests are raised only
+from the record they are about; `POST /v1/approvals` refuses them.
 
 ## Changing the schema
 

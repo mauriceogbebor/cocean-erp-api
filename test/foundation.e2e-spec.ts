@@ -189,16 +189,26 @@ describe("permissions and audit", () => {
 
 describe("approvals", () => {
   const credit = {
-    kind: "credit_override",
-    ref: "SO-2026-118",
-    title: "Riverside Construction · 30,000 L AGO on credit",
+    kind: "payroll",
+    ref: "PAY-2026-10",
+    title: "October payroll, 214 staff",
     amount: 37_200_000,
-    reason:
-      "Pays in 27 days on average; nothing overdue; bridge pour can't wait.",
+    reason: "Variance to September explained: two starters, one leaver.",
   };
   let id = "";
 
-  it("routes a credit override to the MD", async () => {
+  it("refuses kinds that must come from their own record", async () => {
+    const r = await as(app, tokens.sales)
+      .post("/v1/approvals", {
+        ...credit,
+        kind: "credit_override",
+        ref: "SO-2026-999",
+      })
+      .expect(422);
+    expect(r.body.message).toMatch(/raised from the record/);
+  });
+
+  it("routes payroll to the MD", async () => {
     const r = await as(app, tokens.sales)
       .post("/v1/approvals", credit)
       .expect(201);
@@ -243,7 +253,7 @@ describe("approvals", () => {
       .get("/v1/approvals?scope=mine&status=pending")
       .expect(200);
     expect(r.body.map((a: { ref: string }) => a.ref)).toEqual(
-      expect.arrayContaining(["SO-2026-118", "PO-2026-034"]),
+      expect.arrayContaining(["PAY-2026-10", "PO-2026-034"]),
     );
     expect(r.body.map((a: { ref: string }) => a.ref)).not.toContain(
       "PO-2026-033",
@@ -281,7 +291,7 @@ describe("approvals", () => {
 
   it("decides concurrently only once", async () => {
     const r = await as(app, tokens.sales)
-      .post("/v1/approvals", { ...credit, ref: "SO-2026-120" })
+      .post("/v1/approvals", { ...credit, ref: "PAY-2026-11" })
       .expect(201);
     const both = await Promise.all([
       as(app, tokens.md).post(`/v1/approvals/${r.body.id}/decide`, {
@@ -296,7 +306,7 @@ describe("approvals", () => {
 
   it("lets only the maker withdraw a pending request", async () => {
     const r = await as(app, tokens.sales)
-      .post("/v1/approvals", { ...credit, ref: "SO-2026-121" })
+      .post("/v1/approvals", { ...credit, ref: "PAY-2026-12" })
       .expect(201);
     await as(app, tokens.md)
       .post(`/v1/approvals/${r.body.id}/withdraw`)

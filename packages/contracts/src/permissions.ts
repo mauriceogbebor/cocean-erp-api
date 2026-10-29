@@ -15,6 +15,13 @@ export const PERMISSIONS = {
   "approvals.request": "Raise an approval request",
   "approvals.decide": "Decide approval requests routed to your role",
   "approvals.policies.manage": "Change approval limits and routing",
+  "customers.read": "See customers, delivery sites and credit position",
+  "customers.manage": "Create customers and sites; request credit term changes",
+  "prices.read": "See price lists",
+  "prices.manage": "Draft price lists and submit them for approval",
+  "orders.read": "See sales orders",
+  "orders.create": "Create sales orders and request credit overrides",
+  "orders.cancel": "Cancel orders that haven't been released",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

@@ -12,6 +12,11 @@ export type RoleDef = {
 };
 
 const read: Permission[] = ["sites.read", "products.read", "approvals.read"];
+const commercialRead: Permission[] = [
+  "customers.read",
+  "prices.read",
+  "orders.read",
+];
 const requester: Permission[] = [...read, "approvals.request"];
 
 export const ROLES = {
@@ -38,6 +43,7 @@ export const ROLES = {
       "Sees the whole business and decides what is above every other limit.",
     permissions: [
       ...requester,
+      ...commercialRead,
       "approvals.decide",
       "audit.read",
       "users.read",
@@ -48,18 +54,35 @@ export const ROLES = {
     name: "Head of Operations",
     description:
       "Runs operations; approves work orders and trucks into service.",
-    permissions: [...requester, "approvals.decide", "audit.read"],
+    permissions: [
+      ...requester,
+      ...commercialRead,
+      "approvals.decide",
+      "audit.read",
+    ],
   },
   finance: {
     name: "Finance controller",
     description:
       "Confirms money, invoices and pays; approves within the finance limit.",
-    permissions: [...requester, "approvals.decide", "audit.read"],
+    permissions: [
+      ...requester,
+      ...commercialRead,
+      "approvals.decide",
+      "audit.read",
+    ],
   },
   sales: {
     name: "Sales manager",
     description: "Turns customer requests into orders at the approved price.",
-    permissions: requester,
+    permissions: [
+      ...requester,
+      ...commercialRead,
+      "customers.manage",
+      "prices.manage",
+      "orders.create",
+      "orders.cancel",
+    ],
   },
   procurement: {
     name: "Procurement lead",
@@ -74,7 +97,12 @@ export const ROLES = {
   operations: {
     name: "Operations supervisor",
     description: "Assigns trucks, bays and slots; reviews variances.",
-    permissions: [...requester, "approvals.decide"],
+    permissions: [
+      ...requester,
+      "orders.read",
+      "customers.read",
+      "approvals.decide",
+    ],
   },
   depot: {
     name: "Loading supervisor",

@@ -54,6 +54,20 @@ test/                e2e tests against a real database
 | Master data | Sites (depot, station, LPG plant, office, workshop) and products, with audit. Customers, vendors, tanks, trucks and staff follow with their modules.                                                                                                                             |
 | Operations  | `/health` for uptime checks; request ids on every response; helmet security headers; CORS limited to the web app's origin; config validated at start.                                                                                                                            |
 
+## Sales and customers (Phase 2), built
+
+| Concern      | How                                                                                                                                                                                                                                                        |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Customers    | A new customer starts prepaid with no credit. Credit terms and limits change only through a `credit_limit` approval (Finance up to ₦50m, the MD above); the change applies when it is approved, inside the same transaction as the decision.               |
+| Price lists  | Drafted by Sales, approved by the MD. A pending list can't be edited; a rejected one goes back to draft. The list in force is the approved one with the latest start date on or before today (Africa/Lagos).                                               |
+| Orders       | Prices are copied from the list in force onto each line; a price sent with the order is ignored. Delivery sites must belong to the customer. Numbers are `SO-<year>-<0001>`, gap-free per year.                                                            |
+| Credit check | Prepaid orders wait for payment. Credit orders are released when the opening balance, released orders and this order fit under the limit; otherwise they go on credit hold, with the check stored on the order. The customer row is locked while checking. |
+| Override     | Sales can ask for a held order to go ahead (`credit_override`, MD). Approval releases it; rejection or withdrawal puts it back on hold. Only held or awaiting-payment orders can be cancelled, with a reason.                                              |
+| Effects      | `ApprovalHandlers` lets a module say what a decision does to its record. The handler runs in the decision's transaction, so the decision and its effect can't disagree.                                                                                    |
+
+Payment confirmation for prepaid orders and invoicing come with Finance; until
+then the opening balance stands in for the receivable.
+
 ## Conventions for every module
 
 1. Schema in `src/db/schema.ts`, then `pnpm db:generate --name <change>`.

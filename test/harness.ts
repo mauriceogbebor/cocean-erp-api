@@ -63,6 +63,11 @@ export function as(app: INestApplication, token: string) {
         .post(url)
         .set(auth)
         .send(body ?? {}),
+    put: (url: string, body?: object) =>
+      s()
+        .put(url)
+        .set(auth)
+        .send(body ?? {}),
     patch: (url: string, body?: object) =>
       s()
         .patch(url)

@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   bigserial,
   boolean,
+  date,
   index,
   integer,
   jsonb,
@@ -202,10 +203,183 @@ export const approvalRequests = pgTable(
     decidedBy: uuid("decided_by").references(() => users.id),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
     decisionNote: text("decision_note"),
+    /** What approving applies, e.g. the new credit terms. Read by the handler. */
+    payload: jsonb("payload"),
     createdAt: created(),
   },
   (t) => [
     index("approval_requests_status_idx").on(t.status, t.approverRole),
     index("approval_requests_ref_idx").on(t.ref),
   ],
+);
+
+// ── Document numbers: SO-2026-0001, per kind and year ───────────────────────
+export const docSequences = pgTable(
+  "doc_sequences",
+  {
+    key: text("key").notNull(),
+    year: integer("year").notNull(),
+    last: integer("last").notNull().default(0),
+  },
+  (t) => [primaryKey({ columns: [t.key, t.year] })],
+);
+
+// ── Customers ───────────────────────────────────────────────────────────────
+export const customerKind = pgEnum("customer_kind", [
+  "industrial",
+  "reseller",
+  "station_operator",
+  "government",
+]);
+export const creditTerms = pgEnum("credit_terms", ["prepaid", "credit"]);
+
+export const customers = pgTable(
+  "customers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    kind: customerKind("kind").notNull(),
+    /** Changed only by an approved credit_limit request. */
+    terms: creditTerms("terms").notNull().default("prepaid"),
+    creditLimit: numeric("credit_limit", { precision: 18, scale: 2 })
+      .notNull()
+      .default("0"),
+    creditDays: integer("credit_days").notNull().default(0),
+    tin: text("tin"),
+    email: text("email"),
+    phone: text("phone"),
+    address: text("address").notNull(),
+    /** Migrated receivable; Finance's ledger takes over from it. */
+    openingBalance: numeric("opening_balance", { precision: 18, scale: 2 })
+      .notNull()
+      .default("0"),
+    active: boolean("active").notNull().default(true),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [uniqueIndex("customers_code_key").on(t.code)],
+);
+
+/** Delivery points, each with the receiver who confirms deliveries there. */
+export const customerSites = pgTable(
+  "customer_sites",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    name: text("name").notNull(),
+    address: text("address").notNull(),
+    state: text("state").notNull(),
+    receiverName: text("receiver_name").notNull(),
+    receiverPhone: text("receiver_phone").notNull(),
+    active: boolean("active").notNull().default(true),
+    createdAt: created(),
+  },
+  (t) => [index("customer_sites_customer_idx").on(t.customerId)],
+);
+
+// ── Price lists: drafted, approved by someone else, then in force ──────────
+export const priceListStatus = pgEnum("price_list_status", [
+  "draft",
+  "pending",
+  "approved",
+]);
+
+export const priceLists = pgTable(
+  "price_lists",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: text("code").notNull(),
+    validFrom: date("valid_from").notNull(),
+    status: priceListStatus("status").notNull().default("draft"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [uniqueIndex("price_lists_code_key").on(t.code)],
+);
+
+export const priceListLines = pgTable(
+  "price_list_lines",
+  {
+    priceListId: uuid("price_list_id")
+      .notNull()
+      .references(() => priceLists.id, { onDelete: "cascade" }),
+    productCode: text("product_code")
+      .notNull()
+      .references(() => products.code),
+    price: numeric("price", { precision: 18, scale: 2 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.priceListId, t.productCode] })],
+);
+
+// ── Sales orders ────────────────────────────────────────────────────────────
+export const orderStatus = pgEnum("order_status", [
+  "awaiting_payment",
+  "credit_hold",
+  "override_pending",
+  "released",
+  "cancelled",
+]);
+
+export const salesOrders = pgTable(
+  "sales_orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    poRef: text("po_ref").notNull(),
+    requestRef: text("request_ref"),
+    notes: text("notes"),
+    /** The customer's terms when the order was taken. */
+    terms: creditTerms("terms").notNull(),
+    status: orderStatus("status").notNull(),
+    priceListId: uuid("price_list_id")
+      .notNull()
+      .references(() => priceLists.id),
+    total: numeric("total", { precision: 18, scale: 2 }).notNull(),
+    /** Credit check at entry: balance owed, limit, and exposure with this order. */
+    creditCheck: jsonb("credit_check"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    cancelledReason: text("cancelled_reason"),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("sales_orders_number_key").on(t.number),
+    index("sales_orders_customer_idx").on(t.customerId, t.status),
+  ],
+);
+
+export const salesOrderLines = pgTable(
+  "sales_order_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => salesOrders.id, { onDelete: "cascade" }),
+    lineNo: integer("line_no").notNull(),
+    productCode: text("product_code")
+      .notNull()
+      .references(() => products.code),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    unit: text("unit").notNull(),
+    /** Copied from the price list in force; never typed. */
+    unitPrice: numeric("unit_price", { precision: 18, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    deliverySiteId: uuid("delivery_site_id")
+      .notNull()
+      .references(() => customerSites.id),
+  },
+  (t) => [uniqueIndex("sales_order_lines_no_key").on(t.orderId, t.lineNo)],
 );

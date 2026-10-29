@@ -9,6 +9,8 @@ export const APPROVAL_KINDS = {
   truck_onboarding: "New truck into service",
   payroll: "Monthly payroll",
   variance: "Stock or cash variance",
+  credit_limit: "Change to a customer's credit terms or limit",
+  price_list: "Price list",
 } as const;
 export type ApprovalKind = keyof typeof APPROVAL_KINDS;
 export const approvalKinds = Object.keys(APPROVAL_KINDS) as [
@@ -45,4 +47,7 @@ export const DEFAULT_POLICIES: PolicyDef[] = [
   { kind: "truck_onboarding", min: 0, max: null, approver: "executive" },
   { kind: "payroll", min: 0, max: null, approver: "md" },
   { kind: "variance", min: 0, max: null, approver: "operations" },
+  { kind: "credit_limit", min: 0, max: 50_000_000, approver: "finance" },
+  { kind: "credit_limit", min: 50_000_000, max: null, approver: "md" },
+  { kind: "price_list", min: 0, max: null, approver: "md" },
 ];

@@ -3,6 +3,7 @@ import { APP_GUARD } from "@nestjs/core";
 import { JwtModule } from "@nestjs/jwt";
 import { AccessController } from "./access/access.controller.js";
 import { AccessService } from "./access/access.service.js";
+import { ApprovalHandlers } from "./approvals/approval-handlers.js";
 import { ApprovalsController } from "./approvals/approvals.controller.js";
 import { ApprovalsService } from "./approvals/approvals.service.js";
 import { AuditController } from "./audit/audit.controller.js";
@@ -13,9 +14,15 @@ import { AuthGuard, PermissionsGuard } from "./common/guards.js";
 import { DB, ENV } from "./common/tokens.js";
 import type { Env } from "./config/env.js";
 import type { Db } from "./db/client.js";
+import { CustomersController } from "./customers/customers.controller.js";
+import { CustomersService } from "./customers/customers.service.js";
 import { HealthController } from "./health/health.controller.js";
 import { MasterDataController } from "./master-data/master-data.controller.js";
 import { MasterDataService } from "./master-data/master-data.service.js";
+import { OrdersController } from "./orders/orders.controller.js";
+import { OrdersService } from "./orders/orders.service.js";
+import { PricingController } from "./pricing/pricing.controller.js";
+import { PricingService } from "./pricing/pricing.service.js";
 import { UsersController } from "./users/users.controller.js";
 import { UsersService } from "./users/users.service.js";
 
@@ -47,6 +54,9 @@ export class AppModule {
         AuditController,
         MasterDataController,
         ApprovalsController,
+        CustomersController,
+        PricingController,
+        OrdersController,
       ],
       providers: [
         { provide: ENV, useValue: env },
@@ -56,7 +66,11 @@ export class AppModule {
         AuthService,
         UsersService,
         MasterDataService,
+        ApprovalHandlers,
         ApprovalsService,
+        CustomersService,
+        PricingService,
+        OrdersService,
         // Order matters: who you are, then what you may do.
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_GUARD, useClass: PermissionsGuard },

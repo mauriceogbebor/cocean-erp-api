@@ -70,12 +70,19 @@ export async function seed(
           );
     }
 
-    const [{ n }] = await tx
-      .select({ n: sql<number>`count(*)::int` })
-      .from(approvalPolicies);
-    if (n === 0)
+    // Bands are added only for kinds that have none yet, so limits Cocean
+    // changes in the app are kept and new kinds still get a starting band.
+    const have = new Set(
+      (
+        await tx
+          .selectDistinct({ kind: approvalPolicies.kind })
+          .from(approvalPolicies)
+      ).map((r) => r.kind),
+    );
+    const missing = DEFAULT_POLICIES.filter((p) => !have.has(p.kind));
+    if (missing.length)
       await tx.insert(approvalPolicies).values(
-        DEFAULT_POLICIES.map((p) => ({
+        missing.map((p) => ({
           kind: p.kind,
           minAmount: String(p.min),
           maxAmount: p.max === null ? null : String(p.max),
