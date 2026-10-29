@@ -30,6 +30,7 @@ const isUnique = (e: unknown): boolean => {
 const product = (p: typeof products.$inferSelect) => ({
   ...p,
   density: num(p.density),
+  vatRate: num(p.vatRate)!,
 });
 
 @Injectable()
@@ -103,6 +104,7 @@ export class MasterDataService {
           .values({
             ...input,
             density: input.density === null ? null : String(input.density),
+            vatRate: String(input.vatRate),
           })
           .returning();
         await this.audit.record(tx, actor, {
@@ -131,7 +133,7 @@ export class MasterDataService {
         .from(products)
         .where(eq(products.code, code));
       if (!before) throw new NotFoundException("Product not found");
-      const { density, ...rest } = patch;
+      const { density, vatRate, ...rest } = patch;
       const [after] = await tx
         .update(products)
         .set({
@@ -139,6 +141,7 @@ export class MasterDataService {
           ...(density !== undefined
             ? { density: density === null ? null : String(density) }
             : {}),
+          ...(vatRate !== undefined ? { vatRate: String(vatRate) } : {}),
           updatedAt: new Date(),
         })
         .where(eq(products.code, code))

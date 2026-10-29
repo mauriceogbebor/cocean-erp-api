@@ -16,6 +16,7 @@ const commercialRead: Permission[] = [
   "customers.read",
   "prices.read",
   "orders.read",
+  "finance.read",
 ];
 const requester: Permission[] = [...read, "approvals.request"];
 
@@ -70,6 +71,9 @@ export const ROLES = {
       ...commercialRead,
       "approvals.decide",
       "audit.read",
+      "receipts.manage",
+      "invoices.create",
+      "orders.release",
     ],
   },
   sales: {

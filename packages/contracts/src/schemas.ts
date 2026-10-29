@@ -56,10 +56,13 @@ export const createProductSchema = z.object({
   unit: z.enum(["L", "kg"]),
   /** kg per litre, for weighbridge checks. Null for products sold by mass. */
   density: z.number().positive().max(2).nullable(),
+  /** VAT rate charged on sale, e.g. 0.075. Prices are quoted VAT-inclusive. */
+  vatRate: z.number().min(0).max(0.5).default(0),
 });
 export const updateProductSchema = createProductSchema
-  .omit({ code: true })
+  .omit({ code: true, vatRate: true })
   .partial()
+  .extend({ vatRate: z.number().min(0).max(0.5).optional() })
   .extend({ active: z.boolean().optional() });
 
 export const createApprovalSchema = z.object({

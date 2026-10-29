@@ -22,6 +22,10 @@ export const PERMISSIONS = {
   "orders.read": "See sales orders",
   "orders.create": "Create sales orders and request credit overrides",
   "orders.cancel": "Cancel orders that haven't been released",
+  "orders.release": "Release an order once payment or credit covers it",
+  "finance.read": "See receipts, invoices, statements and receivables",
+  "receipts.manage": "Record customer payments and reverse wrong ones",
+  "invoices.create": "Invoice released orders",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

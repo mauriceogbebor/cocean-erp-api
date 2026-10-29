@@ -65,8 +65,19 @@ test/                e2e tests against a real database
 | Override     | Sales can ask for a held order to go ahead (`credit_override`, MD). Approval releases it; rejection or withdrawal puts it back on hold. Only held or awaiting-payment orders can be cancelled, with a reason.                                              |
 | Effects      | `ApprovalHandlers` lets a module say what a decision does to its record. The handler runs in the decision's transaction, so the decision and its effect can't disagree.                                                                                    |
 
-Payment confirmation for prepaid orders and invoicing come with Finance; until
-then the opening balance stands in for the receivable.
+## Receivables (Phase 2), built
+
+| Concern   | How                                                                                                                                                                                                                         |
+| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Ledger    | `customer_ledger` holds every opening balance, invoice, receipt and reversal as a signed amount; the balance is the sum. A trigger makes it append-only, so a mistake is corrected with a new entry.                        |
+| Receipts  | Finance records money as it shows on the bank statement. Each bank reference is recorded once. A wrong receipt is reversed by a second Finance user, with a reason; the original and its reversal both stay on the account. |
+| Release   | Finance releases an order when money or credit covers it: ledger balance plus released, uninvoiced orders plus this order must fit under the limit (zero for prepaid). Sales can't release.                                 |
+| Invoices  | One per released order, at the order's prices. Prices are VAT-inclusive and VAT is shown out of them at the product's rate (zero until Cocean confirms). Due date is the issue date plus the customer's credit days.        |
+| Reporting | Customer statement with running balance. Aged receivables as at any date: money in is applied to the oldest amount due first, the rest aged current, 1-30, 31-60, 61-90, 90+ days past due; unused money is on account.     |
+
+Not yet: posting to a general ledger (open decision), invoicing per delivery
+(Phase 3), credit notes, and bank statement import. Opening balances should be
+loaded once from Cocean's old system, not typed by Sales.
 
 ## Conventions for every module
 
@@ -82,6 +93,7 @@ then the opening balance stands in for the receivable.
 ## Decisions still open (with Cocean, first two weeks)
 
 - Ledger in this platform or posting to Cocean's existing accounting system.
+- VAT treatment per product, and whether price lists stay VAT-inclusive.
 - Hosting (Cocean's servers or a cloud provider) and single sign-on.
 - Tracker (Arc Tracker, Trakzee), weighbridge and bank interfaces.
 - Tax and payroll rules confirmed by Cocean's tax adviser.

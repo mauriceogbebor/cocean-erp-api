@@ -108,15 +108,13 @@ export class PricingService {
           createdBy: user.id,
         })
         .returning();
-      await tx
-        .insert(priceListLines)
-        .values(
-          input.lines.map((l) => ({
-            priceListId: pl.id,
-            productCode: l.productCode,
-            price: String(l.price),
-          })),
-        );
+      await tx.insert(priceListLines).values(
+        input.lines.map((l) => ({
+          priceListId: pl.id,
+          productCode: l.productCode,
+          price: String(l.price),
+        })),
+      );
       await this.audit.record(tx, actor, {
         action: "price_list.created",
         entityType: "price_list",
@@ -135,15 +133,13 @@ export class PricingService {
         throw new ConflictException("Only a draft price list can be changed");
       await this.checkProducts(tx, lines);
       await tx.delete(priceListLines).where(eq(priceListLines.priceListId, id));
-      await tx
-        .insert(priceListLines)
-        .values(
-          lines.map((l) => ({
-            priceListId: id,
-            productCode: l.productCode,
-            price: String(l.price),
-          })),
-        );
+      await tx.insert(priceListLines).values(
+        lines.map((l) => ({
+          priceListId: id,
+          productCode: l.productCode,
+          price: String(l.price),
+        })),
+      );
       await tx
         .update(priceLists)
         .set({ updatedAt: new Date() })

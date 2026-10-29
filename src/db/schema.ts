@@ -153,6 +153,10 @@ export const products = pgTable("products", {
   name: text("name").notNull(),
   unit: text("unit").notNull(),
   density: numeric("density", { precision: 6, scale: 4 }),
+  /** VAT charged on sale, e.g. 0.075. Zero until Cocean's tax adviser confirms each product. */
+  vatRate: numeric("vat_rate", { precision: 5, scale: 4 })
+    .notNull()
+    .default("0"),
   active: boolean("active").notNull().default(true),
   createdAt: created(),
   updatedAt: updated(),
@@ -325,6 +329,7 @@ export const orderStatus = pgEnum("order_status", [
   "override_pending",
   "released",
   "cancelled",
+  "invoiced",
 ]);
 
 export const salesOrders = pgTable(
@@ -382,4 +387,118 @@ export const salesOrderLines = pgTable(
       .references(() => customerSites.id),
   },
   (t) => [uniqueIndex("sales_order_lines_no_key").on(t.orderId, t.lineNo)],
+);
+
+// ── Receivables: receipts, invoices and the customer ledger ────────────────
+export const receipts = pgTable(
+  "receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    bank: text("bank").notNull(),
+    bankRef: text("bank_ref").notNull(),
+    receivedOn: date("received_on").notNull(),
+    notes: text("notes"),
+    recordedBy: uuid("recorded_by")
+      .notNull()
+      .references(() => users.id),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    reversedBy: uuid("reversed_by").references(() => users.id),
+    reversalReason: text("reversal_reason"),
+    createdAt: created(),
+  },
+  (t) => [
+    uniqueIndex("receipts_number_key").on(t.number),
+    /** One bank transaction is recorded once, whoever records it. */
+    uniqueIndex("receipts_bank_ref_key").on(t.bank, t.bankRef),
+    index("receipts_customer_idx").on(t.customerId),
+  ],
+);
+
+export const invoices = pgTable(
+  "invoices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => salesOrders.id),
+    issuedOn: date("issued_on").notNull(),
+    dueOn: date("due_on").notNull(),
+    subtotal: numeric("subtotal", { precision: 18, scale: 2 }).notNull(),
+    vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
+    total: numeric("total", { precision: 18, scale: 2 }).notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [
+    uniqueIndex("invoices_number_key").on(t.number),
+    /** One invoice per order until deliveries split them (Phase 3). */
+    uniqueIndex("invoices_order_key").on(t.orderId),
+    index("invoices_customer_idx").on(t.customerId),
+  ],
+);
+
+export const invoiceLines = pgTable(
+  "invoice_lines",
+  {
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
+    lineNo: integer("line_no").notNull(),
+    productCode: text("product_code")
+      .notNull()
+      .references(() => products.code),
+    description: text("description").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    unit: text("unit").notNull(),
+    unitPrice: numeric("unit_price", { precision: 18, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    vatRate: numeric("vat_rate", { precision: 5, scale: 4 }).notNull(),
+    vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.invoiceId, t.lineNo] })],
+);
+
+export const ledgerKind = pgEnum("ledger_kind", [
+  "opening",
+  "invoice",
+  "receipt",
+  "receipt_reversal",
+]);
+
+/**
+ * Every naira a customer owes or has paid, as signed entries: invoices add,
+ * receipts subtract. The balance is the sum. Append-only (trigger), so a
+ * mistake is corrected by a new entry, never by changing an old one.
+ */
+export const customerLedger = pgTable(
+  "customer_ledger",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    kind: ledgerKind("kind").notNull(),
+    /** The document's number: INV-…, RCT-…, or OPENING. */
+    ref: text("ref").notNull(),
+    docId: uuid("doc_id"),
+    entryDate: date("entry_date").notNull(),
+    /** Positive: the customer owes more. Negative: money in. */
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    /** For invoices: when it falls due. */
+    dueOn: date("due_on"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [index("customer_ledger_customer_idx").on(t.customerId, t.entryDate)],
 );

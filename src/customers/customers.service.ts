@@ -13,11 +13,17 @@ import type {
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { z } from "zod";
 import type { Db, Tx } from "../db/client.js";
-import { customerSites, customers, salesOrders } from "../db/schema.js";
+import {
+  customerLedger,
+  customerSites,
+  customers,
+  salesOrders,
+} from "../db/schema.js";
 import { ApprovalHandlers } from "../approvals/approval-handlers.js";
 import { ApprovalsService } from "../approvals/approvals.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
+import { lagosDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { DB } from "../common/tokens.js";
 
@@ -35,6 +41,7 @@ const view = (c: Customer) => ({
   openingBalance: num(c.openingBalance)!,
 });
 
+const round2 = (n: number) => Math.round(n * 100) / 100;
 const naira = (n: number) => `₦${n.toLocaleString("en-NG")}`;
 
 @Injectable()
@@ -71,33 +78,37 @@ export class CustomersService {
   }
 
   /**
-   * What the customer owes and has committed: the opening balance (until
-   * Finance's ledger replaces it) plus released credit orders not yet
-   * invoiced. `available` is what is left under the limit.
+   * What the customer owes and has committed: the ledger balance (invoices
+   * and opening balance less receipts) plus orders released but not yet
+   * invoiced. `available` is what is left under the limit; for a prepaid
+   * customer the limit is zero, so `available` is money paid and not yet used.
    */
   async creditPosition(exec: Db | Tx, c: Customer) {
-    const [{ open }] = await exec
+    const [{ balance }] = await exec
       .select({
-        open: sql<string>`coalesce(sum(${salesOrders.total}), 0)`,
+        balance: sql<string>`coalesce(sum(${customerLedger.amount}), 0)`,
       })
+      .from(customerLedger)
+      .where(eq(customerLedger.customerId, c.id));
+    const [{ open }] = await exec
+      .select({ open: sql<string>`coalesce(sum(${salesOrders.total}), 0)` })
       .from(salesOrders)
       .where(
         and(
           eq(salesOrders.customerId, c.id),
-          eq(salesOrders.terms, "credit"),
           eq(salesOrders.status, "released"),
         ),
       );
-    const limit = num(c.creditLimit)!;
-    const balance = num(c.openingBalance)!;
+    const limit = c.terms === "credit" ? num(c.creditLimit)! : 0;
+    const bal = Number(balance);
     const openOrders = Number(open);
-    const exposure = balance + openOrders;
+    const exposure = round2(bal + openOrders);
     return {
       limit,
-      balance,
+      balance: bal,
       openOrders,
       exposure,
-      available: limit - exposure,
+      available: round2(limit - exposure),
     };
   }
 
@@ -115,6 +126,16 @@ export class CustomersService {
         .insert(customers)
         .values({ ...fields, openingBalance: String(openingBalance) })
         .returning();
+      if (openingBalance !== 0)
+        await tx.insert(customerLedger).values({
+          customerId: c.id,
+          kind: "opening",
+          ref: "OPENING",
+          entryDate: lagosDate(),
+          dueOn: lagosDate(),
+          amount: String(openingBalance),
+          createdBy: user.id,
+        });
       await this.audit.record(tx, actor, {
         action: "customer.created",
         entityType: "customer",

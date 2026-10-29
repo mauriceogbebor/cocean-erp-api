@@ -33,6 +33,7 @@ const listQuery = z.object({
       "override_pending",
       "released",
       "cancelled",
+      "invoiced",
     ])
     .optional(),
   customerId: z.uuid().optional(),
@@ -74,6 +75,16 @@ export class OrdersController {
     @CurrentActor() actor: Actor,
   ) {
     return this.orders.requestOverride(id, body.reason, user, actor);
+  }
+
+  @Post(":id/release")
+  @HttpCode(200)
+  @RequirePermissions("orders.release")
+  release(
+    @Param("id", ParseUUIDPipe) id: string,
+    @CurrentActor() actor: Actor,
+  ) {
+    return this.orders.release(id, actor);
   }
 
   @Post(":id/cancel")

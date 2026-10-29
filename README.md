@@ -59,6 +59,11 @@ pnpm test        # TEST_DATABASE_URL defaults to postgres://cocean:cocean@localh
 | POST               | /v1/orders                                                                                 | orders.create                                        |
 | POST               | /v1/orders/:id/override (raises a credit_override approval)                                | orders.create, approvals.request                     |
 | POST               | /v1/orders/:id/cancel                                                                      | orders.cancel                                        |
+| POST               | /v1/orders/:id/release (re-runs the payment or credit check)                               | orders.release                                       |
+| GET                | /v1/receipts?customerId · /v1/invoices?customerId · /v1/invoices/:id                       | finance.read                                         |
+| POST               | /v1/receipts · /v1/receipts/:id/reverse (not by the person who recorded it)                | receipts.manage                                      |
+| POST               | /v1/orders/:id/invoice                                                                     | invoices.create                                      |
+| GET                | /v1/customers/:id/statement · /v1/receivables?asOf=                                        | finance.read                                         |
 
 `credit_limit`, `price_list` and `credit_override` requests are raised only
 from the record they are about; `POST /v1/approvals` refuses them.

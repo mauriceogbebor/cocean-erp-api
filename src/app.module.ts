@@ -16,6 +16,8 @@ import type { Env } from "./config/env.js";
 import type { Db } from "./db/client.js";
 import { CustomersController } from "./customers/customers.controller.js";
 import { CustomersService } from "./customers/customers.service.js";
+import { FinanceController } from "./finance/finance.controller.js";
+import { ReceivablesService } from "./finance/receivables.service.js";
 import { HealthController } from "./health/health.controller.js";
 import { MasterDataController } from "./master-data/master-data.controller.js";
 import { MasterDataService } from "./master-data/master-data.service.js";
@@ -57,6 +59,7 @@ export class AppModule {
         CustomersController,
         PricingController,
         OrdersController,
+        FinanceController,
       ],
       providers: [
         { provide: ENV, useValue: env },
@@ -71,6 +74,7 @@ export class AppModule {
         CustomersService,
         PricingService,
         OrdersService,
+        ReceivablesService,
         // Order matters: who you are, then what you may do.
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_GUARD, useClass: PermissionsGuard },

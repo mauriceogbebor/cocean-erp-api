@@ -156,15 +156,13 @@ export class OrdersService {
           releasedAt: status === "released" ? new Date() : null,
         })
         .returning();
-      await tx
-        .insert(salesOrderLines)
-        .values(
-          lines.map(({ amountKobo, ...l }) => ({
-            ...l,
-            orderId: o.id,
-            amount: fromKobo(amountKobo),
-          })),
-        );
+      await tx.insert(salesOrderLines).values(
+        lines.map(({ amountKobo, ...l }) => ({
+          ...l,
+          orderId: o.id,
+          amount: fromKobo(amountKobo),
+        })),
+      );
       await this.audit.record(tx, actor, {
         action: "order.created",
         entityType: "order",
@@ -281,12 +279,49 @@ export class OrdersService {
     });
   }
 
+  /**
+   * Finance releases an order once money or credit covers it: a prepaid
+   * order after the customer has paid, or a held credit order after they
+   * have paid down. The same check as at entry, run again now.
+   */
+  async release(id: string, actor: Actor) {
+    return this.db.transaction(async (tx) => {
+      const o = await this.lock(tx, id);
+      if (o.status !== "awaiting_payment" && o.status !== "credit_hold")
+        throw new ConflictException(
+          `Only an order awaiting payment or on credit hold can be released (this one is ${o.status})`,
+        );
+      const [c] = await tx
+        .select()
+        .from(customers)
+        .where(eq(customers.id, o.customerId))
+        .for("update");
+      const pos = await this.customers.creditPosition(tx, c);
+      const total = num(o.total)!;
+      const short = Math.round((pos.exposure + total - pos.limit) * 100) / 100;
+      if (short > 0)
+        throw new ConflictException(
+          c.terms === "prepaid"
+            ? `${c.name} has ${naira(Math.max(0, -pos.exposure))} paid and unused; this order needs ${naira(total)}. ${naira(short)} short.`
+            : `Still ${naira(short)} over ${c.name}'s ${naira(pos.limit)} limit. Record their payment first, or ask for an override.`,
+        );
+      await tx
+        .update(salesOrders)
+        .set({
+          creditCheck: { ...pos, thisOrder: total, releasedBy: "finance" },
+        })
+        .where(eq(salesOrders.id, id));
+      await this.setStatus(tx, id, "released", actor, "order.released");
+      return this.get(id, tx);
+    });
+  }
+
   async cancel(id: string, reason: string, actor: Actor) {
     return this.db.transaction(async (tx) => {
       const o = await this.lock(tx, id);
-      if (o.status === "released")
+      if (o.status === "released" || o.status === "invoiced")
         throw new ConflictException(
-          "This order is released to Logistics and can't be cancelled here",
+          `This order is ${o.status} and can't be cancelled here`,
         );
       if (o.status === "override_pending")
         throw new ConflictException(
