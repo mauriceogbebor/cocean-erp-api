@@ -502,3 +502,205 @@ export const customerLedger = pgTable(
   },
   (t) => [index("customer_ledger_customer_idx").on(t.customerId, t.entryDate)],
 );
+
+// ── Procurement: suppliers, purchase orders, goods received, supplier bills ─
+export const vendorBankStatus = pgEnum("vendor_bank_status", [
+  "none",
+  "pending",
+  "verified",
+]);
+
+export const vendors = pgTable(
+  "vendors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    tin: text("tin"),
+    email: text("email"),
+    phone: text("phone"),
+    address: text("address").notNull(),
+    /** Only ever set by an approved vendor_bank request. */
+    bankName: text("bank_name"),
+    accountNumber: text("account_number"),
+    accountName: text("account_name"),
+    bankStatus: vendorBankStatus("bank_status").notNull().default("none"),
+    bankVerifiedAt: timestamp("bank_verified_at", { withTimezone: true }),
+    active: boolean("active").notNull().default(true),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [uniqueIndex("vendors_code_key").on(t.code)],
+);
+
+export const poStatus = pgEnum("po_status", [
+  "draft",
+  "pending",
+  "approved",
+  "partially_received",
+  "received",
+  "cancelled",
+]);
+
+export const purchaseOrders = pgTable(
+  "purchase_orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    vendorId: uuid("vendor_id")
+      .notNull()
+      .references(() => vendors.id),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+    status: poStatus("status").notNull().default("draft"),
+    justification: text("justification").notNull(),
+    quoteRef: text("quote_ref"),
+    subtotal: numeric("subtotal", { precision: 18, scale: 2 }).notNull(),
+    vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
+    total: numeric("total", { precision: 18, scale: 2 }).notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    cancelledReason: text("cancelled_reason"),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("purchase_orders_number_key").on(t.number),
+    index("purchase_orders_vendor_idx").on(t.vendorId, t.status),
+  ],
+);
+
+export const purchaseOrderLines = pgTable(
+  "purchase_order_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    poId: uuid("po_id")
+      .notNull()
+      .references(() => purchaseOrders.id, { onDelete: "cascade" }),
+    lineNo: integer("line_no").notNull(),
+    productCode: text("product_code").references(() => products.code),
+    description: text("description").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    unit: text("unit").notNull(),
+    unitPrice: numeric("unit_price", { precision: 18, scale: 2 }).notNull(),
+    vatRate: numeric("vat_rate", { precision: 5, scale: 4 }).notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
+    received: numeric("received", { precision: 14, scale: 3 })
+      .notNull()
+      .default("0"),
+    /** Quantity on matched supplier bills. */
+    billed: numeric("billed", { precision: 14, scale: 3 })
+      .notNull()
+      .default("0"),
+  },
+  (t) => [uniqueIndex("purchase_order_lines_no_key").on(t.poId, t.lineNo)],
+);
+
+export const goodsReceipts = pgTable(
+  "goods_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    poId: uuid("po_id")
+      .notNull()
+      .references(() => purchaseOrders.id),
+    receivedOn: date("received_on").notNull(),
+    deliveryNote: text("delivery_note").notNull(),
+    notes: text("notes"),
+    receivedBy: uuid("received_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [uniqueIndex("goods_receipts_number_key").on(t.number)],
+);
+
+export const goodsReceiptLines = pgTable(
+  "goods_receipt_lines",
+  {
+    receiptId: uuid("receipt_id")
+      .notNull()
+      .references(() => goodsReceipts.id, { onDelete: "cascade" }),
+    poLineId: uuid("po_line_id")
+      .notNull()
+      .references(() => purchaseOrderLines.id),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.receiptId, t.poLineId] })],
+);
+
+export const billStatus = pgEnum("bill_status", [
+  "matched",
+  "exception",
+  "payment_pending",
+  "approved",
+  "paid",
+  "void",
+]);
+
+export const supplierBills = pgTable(
+  "supplier_bills",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    vendorId: uuid("vendor_id")
+      .notNull()
+      .references(() => vendors.id),
+    poId: uuid("po_id")
+      .notNull()
+      .references(() => purchaseOrders.id),
+    vendorInvoiceNo: text("vendor_invoice_no").notNull(),
+    invoiceDate: date("invoice_date").notNull(),
+    statedTotal: numeric("stated_total", { precision: 18, scale: 2 }).notNull(),
+    subtotal: numeric("subtotal", { precision: 18, scale: 2 }).notNull(),
+    vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
+    total: numeric("total", { precision: 18, scale: 2 }).notNull(),
+    status: billStatus("status").notNull(),
+    /** Why it didn't match: one line per problem. Empty when matched. */
+    exceptions: jsonb("exceptions").$type<string[]>().notNull(),
+    recordedBy: uuid("recorded_by")
+      .notNull()
+      .references(() => users.id),
+    /** The bank details the payment was approved against. */
+    payTo: jsonb("pay_to").$type<{
+      bankName: string;
+      accountNumber: string;
+      accountName: string;
+    }>(),
+    paymentRef: text("payment_ref"),
+    paidOn: date("paid_on"),
+    paidBy: uuid("paid_by").references(() => users.id),
+    voidReason: text("void_reason"),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("supplier_bills_number_key").on(t.number),
+    /** A supplier's invoice is entered once. */
+    uniqueIndex("supplier_bills_vendor_invoice_key").on(
+      t.vendorId,
+      t.vendorInvoiceNo,
+    ),
+  ],
+);
+
+export const supplierBillLines = pgTable(
+  "supplier_bill_lines",
+  {
+    billId: uuid("bill_id")
+      .notNull()
+      .references(() => supplierBills.id, { onDelete: "cascade" }),
+    poLineId: uuid("po_line_id")
+      .notNull()
+      .references(() => purchaseOrderLines.id),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    unitPrice: numeric("unit_price", { precision: 18, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.billId, t.poLineId] })],
+);

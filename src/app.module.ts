@@ -23,6 +23,10 @@ import { MasterDataController } from "./master-data/master-data.controller.js";
 import { MasterDataService } from "./master-data/master-data.service.js";
 import { OrdersController } from "./orders/orders.controller.js";
 import { OrdersService } from "./orders/orders.service.js";
+import { BillsService } from "./procurement/bills.service.js";
+import { ProcurementController } from "./procurement/procurement.controller.js";
+import { PurchaseOrdersService } from "./procurement/purchase-orders.service.js";
+import { VendorsService } from "./procurement/vendors.service.js";
 import { PricingController } from "./pricing/pricing.controller.js";
 import { PricingService } from "./pricing/pricing.service.js";
 import { UsersController } from "./users/users.controller.js";
@@ -60,6 +64,7 @@ export class AppModule {
         PricingController,
         OrdersController,
         FinanceController,
+        ProcurementController,
       ],
       providers: [
         { provide: ENV, useValue: env },
@@ -75,6 +80,9 @@ export class AppModule {
         PricingService,
         OrdersService,
         ReceivablesService,
+        VendorsService,
+        PurchaseOrdersService,
+        BillsService,
         // Order matters: who you are, then what you may do.
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_GUARD, useClass: PermissionsGuard },

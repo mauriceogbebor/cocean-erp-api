@@ -26,6 +26,12 @@ export const PERMISSIONS = {
   "finance.read": "See receipts, invoices, statements and receivables",
   "receipts.manage": "Record customer payments and reverse wrong ones",
   "invoices.create": "Invoice released orders",
+  "vendors.read": "See suppliers",
+  "vendors.manage": "Create suppliers and request bank detail changes",
+  "purchase_orders.read": "See purchase orders, goods received and supplier invoices",
+  "purchase_orders.manage": "Draft purchase orders and submit them for approval",
+  "goods.receive": "Record goods received against a purchase order",
+  "bills.manage": "Enter and match supplier invoices; request and record payment",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

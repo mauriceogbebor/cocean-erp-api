@@ -221,20 +221,20 @@ describe("approvals", () => {
     await as(app, tokens.sales).post("/v1/approvals", credit).expect(409);
   });
 
-  it("routes by amount: a small PO to Finance, a large one to the MD", async () => {
-    const po = {
-      kind: "purchase_order",
+  it("routes by amount: a small work order to Operations, a large one to the Head of Operations", async () => {
+    const wo = {
+      kind: "work_order",
       title: "Tyres for LAG-552-EP",
       reason: "Truck blocked from dispatch.",
     };
     const small = await as(app, tokens.sales)
-      .post("/v1/approvals", { ...po, ref: "PO-2026-033", amount: 4_860_000 })
+      .post("/v1/approvals", { ...wo, ref: "WO-2026-033", amount: 486_000 })
       .expect(201);
-    expect(small.body.approverRole).toBe("finance");
+    expect(small.body.approverRole).toBe("operations");
     const big = await as(app, tokens.sales)
-      .post("/v1/approvals", { ...po, ref: "PO-2026-034", amount: 46_800_000 })
+      .post("/v1/approvals", { ...wo, ref: "WO-2026-034", amount: 4_680_000 })
       .expect(201);
-    expect(big.body.approverRole).toBe("md");
+    expect(big.body.approverRole).toBe("executive");
   });
 
   it("never lets the maker decide, nor anyone outside the authority", async () => {
@@ -253,10 +253,10 @@ describe("approvals", () => {
       .get("/v1/approvals?scope=mine&status=pending")
       .expect(200);
     expect(r.body.map((a: { ref: string }) => a.ref)).toEqual(
-      expect.arrayContaining(["PAY-2026-10", "PO-2026-034"]),
+      expect.arrayContaining(["PAY-2026-10"]),
     );
     expect(r.body.map((a: { ref: string }) => a.ref)).not.toContain(
-      "PO-2026-033",
+      "WO-2026-034",
     );
   });
 

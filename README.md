@@ -64,8 +64,17 @@ pnpm test        # TEST_DATABASE_URL defaults to postgres://cocean:cocean@localh
 | POST               | /v1/receipts · /v1/receipts/:id/reverse (not by the person who recorded it)                | receipts.manage                                      |
 | POST               | /v1/orders/:id/invoice                                                                     | invoices.create                                      |
 | GET                | /v1/customers/:id/statement · /v1/receivables?asOf=                                        | finance.read                                         |
+| GET                | /v1/vendors · /v1/vendors/:id                                                              | vendors.read                                         |
+| POST · PATCH       | /v1/vendors · /v1/vendors/:id                                                              | vendors.manage                                       |
+| POST               | /v1/vendors/:id/bank-details (raises a vendor_bank approval)                               | vendors.manage, approvals.request                    |
+| GET                | /v1/purchase-orders?status&vendorId · /v1/purchase-orders/:id · /v1/bills · /v1/payables   | purchase_orders.read                                 |
+| POST · PUT         | /v1/purchase-orders · /v1/purchase-orders/:id/lines (draft) · /:id/cancel                  | purchase_orders.manage                               |
+| POST               | /v1/purchase-orders/:id/submit (raises a purchase_order approval)                          | purchase_orders.manage, approvals.request            |
+| POST               | /v1/purchase-orders/:id/receipts (goods received; not by the person who raised the order)  | goods.receive                                        |
+| POST               | /v1/bills · /v1/bills/:id/void · /v1/bills/:id/paid                                        | bills.manage                                         |
+| POST               | /v1/bills/:id/request-payment (raises a supplier_payment approval)                         | bills.manage, approvals.request                      |
 
-`credit_limit`, `price_list` and `credit_override` requests are raised only
+`credit_limit`, `price_list`, `credit_override`, `vendor_bank`, `purchase_order` and `supplier_payment` requests are raised only
 from the record they are about; `POST /v1/approvals` refuses them.
 
 ## Changing the schema

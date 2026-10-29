@@ -19,6 +19,7 @@ const commercialRead: Permission[] = [
   "finance.read",
 ];
 const requester: Permission[] = [...read, "approvals.request"];
+const buyingRead: Permission[] = ["vendors.read", "purchase_orders.read"];
 
 export const ROLES = {
   admin: {
@@ -45,6 +46,7 @@ export const ROLES = {
     permissions: [
       ...requester,
       ...commercialRead,
+      ...buyingRead,
       "approvals.decide",
       "audit.read",
       "users.read",
@@ -58,6 +60,7 @@ export const ROLES = {
     permissions: [
       ...requester,
       ...commercialRead,
+      ...buyingRead,
       "approvals.decide",
       "audit.read",
     ],
@@ -74,6 +77,8 @@ export const ROLES = {
       "receipts.manage",
       "invoices.create",
       "orders.release",
+      ...buyingRead,
+      "bills.manage",
     ],
   },
   sales: {
@@ -91,7 +96,12 @@ export const ROLES = {
   procurement: {
     name: "Procurement lead",
     description: "Sources and buys at the best compliant price.",
-    permissions: requester,
+    permissions: [
+      ...requester,
+      ...buyingRead,
+      "vendors.manage",
+      "purchase_orders.manage",
+    ],
   },
   hr: {
     name: "HR and payroll manager",
@@ -110,8 +120,9 @@ export const ROLES = {
   },
   depot: {
     name: "Loading supervisor",
-    description: "Loads, seals, weighs and releases at the depot.",
-    permissions: read,
+    description:
+      "Loads, seals, weighs and releases at the depot; receives deliveries.",
+    permissions: [...read, "purchase_orders.read", "goods.receive"],
   },
   fleet: {
     name: "Fleet and maintenance manager",

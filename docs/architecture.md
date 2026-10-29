@@ -79,6 +79,20 @@ Not yet: posting to a general ledger (open decision), invoicing per delivery
 (Phase 3), credit notes, and bank statement import. Opening balances should be
 loaded once from Cocean's old system, not typed by Sales.
 
+## Procurement (Phase 2), built
+
+| Concern         | How                                                                                                                                                                                                                                                                                       |
+| --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Suppliers       | Procurement creates suppliers. Bank details are set only by a `vendor_bank` approval decided by Finance; while a change is pending the supplier can't be paid, and a refused change leaves the old details in place.                                                                      |
+| Purchase order  | Drafted by Procurement at the supplier's quoted price plus VAT, and routed by total: Finance up to ₦5m, the Head of Operations to ₦25m, the MD above. Approved orders can be received; rejected ones go back to draft.                                                                    |
+| Goods received  | The depot records what arrived, line by line, against the supplier's delivery note. Nobody receives more than is still due, and the person who raised the order can't receive it.                                                                                                         |
+| Three-way match | Finance enters the supplier's invoice as printed. Each line must be at the order's price and within what was received and not yet billed, and the printed total must agree with the lines plus VAT (₦1 rounding). Otherwise it is an exception, kept with the reasons, and can't be paid. |
+| Payment         | A matched bill is put up for payment (`supplier_payment`: Finance to ₦25m, the MD above) to the supplier's verified bank details, which are saved with the request. If they change before payment is recorded, the approval lapses.                                                       |
+
+Not yet: requisitions before the PO, partial-price tolerances, returns to
+supplier, withholding tax on payment, and posting stock receipts to inventory
+(Phase 3).
+
 ## Conventions for every module
 
 1. Schema in `src/db/schema.ts`, then `pnpm db:generate --name <change>`.
