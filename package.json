@@ -1,0 +1,50 @@
+{
+  "name": "cocean-erp-api",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Cocean ERP backend: identity, permissions, audit, approvals and module services (NestJS + PostgreSQL).",
+  "type": "module",
+  "packageManager": "pnpm@10.13.1",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "build": "pnpm --filter @cocean/contracts build && tsc -p tsconfig.build.json",
+    "start": "node dist/main.js",
+    "dev": "pnpm --filter @cocean/contracts build && tsx watch src/main.ts",
+    "typecheck": "pnpm --filter @cocean/contracts build && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm --filter @cocean/contracts build && vitest run",
+    "format": "prettier --write .",
+    "db:up": "docker compose up -d db",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "pnpm build && node dist/db/migrate.js",
+    "db:seed": "node dist/db/seed.js"
+  },
+  "dependencies": {
+    "@cocean/contracts": "workspace:*",
+    "@nestjs/common": "12.3.2",
+    "@nestjs/core": "12.3.2",
+    "@nestjs/jwt": "12.0.3",
+    "@nestjs/platform-express": "12.3.2",
+    "@node-rs/argon2": "2.2.2",
+    "drizzle-orm": "0.45.4",
+    "helmet": "8.3.0",
+    "pg": "8.23.1",
+    "reflect-metadata": "0.2.2",
+    "rxjs": "7.8.2",
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "@nestjs/testing": "12.3.2",
+    "@types/express": "5.0.6",
+    "@types/node": "26.6.4",
+    "@types/pg": "8.23.1",
+    "@types/supertest": "7.2.1",
+    "drizzle-kit": "0.31.11",
+    "prettier": "3.9.9",
+    "supertest": "7.3.1",
+    "tsx": "4.23.15",
+    "typescript": "6.0.3",
+    "vitest": "5.0.5"
+  }
+}

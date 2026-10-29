@@ -1,0 +1,23 @@
+{
+  "name": "@cocean/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Shared roles, permissions, approval kinds and request schemas for the Cocean ERP API and web app.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepare": "tsc -p tsconfig.json"
+  },
+  "dependencies": {
+    "zod": "4.6.5"
+  },
+  "devDependencies": {
+    "typescript": "6.0.3"
+  },
+  "files": [
+    "dist",
+    "src"
+  ]
+}

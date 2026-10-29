@@ -1,0 +1,8 @@
+# The API is the root package; shared contracts are a workspace member that the
+# web app can also install.
+packages:
+  - "packages/*"
+
+# drizzle-kit uses esbuild, which installs its platform binary on install.
+onlyBuiltDependencies:
+  - esbuild
