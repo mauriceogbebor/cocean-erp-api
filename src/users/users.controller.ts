@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Get,
+  HttpCode,
   Inject,
   Param,
   ParseUUIDPipe,
@@ -10,6 +11,7 @@ import {
 } from "@nestjs/common";
 import {
   createUserSchema,
+  resetPasswordSchema,
   setRolesSchema,
   type CreateUserInput,
   type RoleKey,
@@ -62,5 +64,16 @@ export class UsersController {
     @CurrentActor() actor: Actor,
   ) {
     return this.users.setStatus(id, body.status, actor);
+  }
+
+  @Post(":id/password")
+  @HttpCode(200)
+  @RequirePermissions("users.manage")
+  resetPassword(
+    @Param("id", new ParseUUIDPipe()) id: string,
+    @Body(new ZodPipe(resetPasswordSchema)) body: { password: string },
+    @CurrentActor() actor: Actor,
+  ) {
+    return this.users.resetPassword(id, body.password, actor);
   }
 }

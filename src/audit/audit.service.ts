@@ -1,7 +1,7 @@
 import { Inject, Injectable } from "@nestjs/common";
-import { and, desc, eq, lt, type SQL } from "drizzle-orm";
+import { and, desc, eq, getTableColumns, lt, type SQL } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { auditEvents } from "../db/schema.js";
+import { auditEvents, users } from "../db/schema.js";
 import type { Actor } from "../common/auth-context.js";
 import { DB } from "../common/tokens.js";
 
@@ -46,8 +46,9 @@ export class AuditService {
     if (q.actorId) where.push(eq(auditEvents.actorId, q.actorId));
     if (q.before) where.push(lt(auditEvents.id, q.before));
     return this.db
-      .select()
+      .select({ ...getTableColumns(auditEvents), actorName: users.name })
       .from(auditEvents)
+      .leftJoin(users, eq(users.id, auditEvents.actorId))
       .where(where.length ? and(...where) : undefined)
       .orderBy(desc(auditEvents.id))
       .limit(50);

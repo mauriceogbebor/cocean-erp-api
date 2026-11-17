@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { hash, verify } from "@node-rs/argon2";
-import type { LoginInput } from "@qorrix-erp/contracts";
+import type { ChangePasswordInput, LoginInput } from "@qorrix-erp/contracts";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { sessions, users } from "../db/schema.js";
@@ -195,5 +195,42 @@ export class AuthService {
       refreshToken,
       expiresIn: this.env.ACCESS_TOKEN_MINUTES * 60,
     };
+  }
+
+  /**
+   * A signed-in person changes their own password. Every session ends, so a
+   * stolen one stops working; the web app signs them straight back in.
+   */
+  async changePassword(
+    userId: string,
+    input: ChangePasswordInput,
+    actor: Actor,
+  ) {
+    const [u] = await this.db.select().from(users).where(eq(users.id, userId));
+    if (!u) throw new UnauthorizedException();
+    const ok = await verify(u.passwordHash, input.current).catch(() => false);
+    if (!ok)
+      throw new UnauthorizedException({
+        message: "Validation failed",
+        issues: [
+          { path: "current", message: "That isn't your current password" },
+        ],
+      });
+    const passwordHash = await hash(input.password);
+    await this.db.transaction(async (tx) => {
+      await tx
+        .update(users)
+        .set({ passwordHash, updatedAt: new Date() })
+        .where(eq(users.id, userId));
+      await tx
+        .update(sessions)
+        .set({ revokedAt: new Date() })
+        .where(and(eq(sessions.userId, userId), isNull(sessions.revokedAt)));
+      await this.audit.record(tx, actor, {
+        action: "user.password_changed",
+        entityType: "user",
+        entityId: userId,
+      });
+    });
   }
 }

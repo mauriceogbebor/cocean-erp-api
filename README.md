@@ -60,13 +60,14 @@ pnpm test        # TEST_DATABASE_URL defaults to postgres://erp:erp@localhost:54
 | ------------------ | ------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------- |
 | GET                | /health                                                                                                                  | public                                               |
 | POST               | /v1/auth/login, /v1/auth/refresh, /v1/auth/logout                                                                        | public                                               |
-| GET                | /v1/auth/me                                                                                                              | signed in                                            |
+| GET · POST         | /v1/auth/me · /v1/auth/password (change your own; ends every session)                                                    | signed in                                            |
 | GET                | /v1/users                                                                                                                | users.read                                           |
-| POST               | /v1/users · PATCH /v1/users/:id/roles · PATCH /v1/users/:id/status                                                       | users.manage                                         |
+| POST               | /v1/users · PATCH /v1/users/:id/roles · PATCH /v1/users/:id/status · POST /v1/users/:id/password (temporary password)    | users.manage                                         |
 | GET                | /v1/roles · /v1/permissions                                                                                              | roles.read                                           |
 | GET                | /v1/audit?entityType&entityId&actorId&before                                                                             | audit.read                                           |
 | GET · POST · PATCH | /v1/sites, /v1/products                                                                                                  | sites.* / products.*                                 |
 | GET                | /v1/approvals?scope=mine\|raised\|all&status= · /v1/approvals/:id · /v1/approvals/policies                               | approvals.read                                       |
+| PUT                | /v1/approvals/policies/:kind (who decides, by amount)                                                                    | approvals.policies.manage                            |
 | POST               | /v1/approvals                                                                                                            | approvals.request                                    |
 | POST               | /v1/approvals/:id/decide                                                                                                 | approvals.decide, the routed role, and not the maker |
 | POST               | /v1/approvals/:id/withdraw                                                                                               | approvals.request, maker only                        |

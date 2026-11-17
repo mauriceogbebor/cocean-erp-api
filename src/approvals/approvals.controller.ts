@@ -7,11 +7,16 @@ import {
   Param,
   ParseUUIDPipe,
   Post,
+  Put,
   Query,
 } from "@nestjs/common";
 import {
+  approvalKinds,
   createApprovalSchema,
   decideApprovalSchema,
+  policyBandsSchema,
+  type ApprovalKind,
+  type PolicyBandsInput,
   type CreateApprovalInput,
   type DecideApprovalInput,
 } from "@qorrix-erp/contracts";
@@ -50,6 +55,16 @@ export class ApprovalsController {
   @RequirePermissions("approvals.read")
   policies() {
     return this.approvals.policies();
+  }
+
+  @Put("policies/:kind")
+  @RequirePermissions("approvals.policies.manage")
+  setPolicies(
+    @Param("kind", new ZodPipe(z.enum(approvalKinds))) kind: ApprovalKind,
+    @Body(new ZodPipe(policyBandsSchema)) body: PolicyBandsInput,
+    @CurrentActor() actor: Actor,
+  ) {
+    return this.approvals.setPolicies(kind, body, actor);
   }
 
   @Get(":id")

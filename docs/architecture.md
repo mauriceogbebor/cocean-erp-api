@@ -153,6 +153,16 @@ Not yet, waiting on decisions: shift handover between attendants on one day, POS
 6. Money is `numeric(18,2)` in naira; quantities in litres or kilograms as the
    product says; times are stored in UTC and shown in Africa/Lagos.
 
+## Administration, built
+
+| Concern         | How                                                                                                                                                                                                                                                                                                             |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Users           | An administrator adds people with a temporary password and roles, changes roles, assigns station and plant managers to their sites, disables people (signing them out everywhere) and sets a new temporary password for someone locked out. Nobody can disable themselves or drop their own administrator role. |
+| Passwords       | Anyone changes their own password with their current one; every session ends, and the web app signs them straight back in.                                                                                                                                                                                      |
+| Approval limits | `PUT /v1/approvals/policies/:kind` replaces the bands for a kind: they start at 0, join up with no gaps, end open-ended, and each approver's role must be able to decide. Old bands stay (inactive) for the record; requests already waiting keep their approver.                                               |
+| Reference data  | Sites, products and tanks are set up in the app. Tanks start from the last physical dip; after that stock moves only through recorded movements.                                                                                                                                                                |
+| Audit trail     | Readable by anyone with `audit.read`, filtered by kind of record, 50 at a time, with who did it. It can't be edited.                                                                                                                                                                                            |
+
 ## People and payroll (Phase 5b), built
 
 | Concern              | How                                                                                                                                                                                                                                                                                                                                                                                 |

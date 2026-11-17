@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
@@ -6,10 +7,12 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import type {
-  ApprovalKind,
-  CreateApprovalInput,
-  DecideApprovalInput,
+import {
+  ROLES,
+  type ApprovalKind,
+  type CreateApprovalInput,
+  type DecideApprovalInput,
+  type PolicyBandsInput,
 } from "@qorrix-erp/contracts";
 import {
   and,
@@ -274,5 +277,61 @@ export class ApprovalsService {
       minAmount: num(p.minAmount)!,
       maxAmount: num(p.maxAmount),
     }));
+  }
+
+  /**
+   * Replaces who decides a kind of request, by amount. Old bands are kept
+   * (inactive) for the record; requests already waiting keep the approver
+   * they were routed to. Every band's approver must be able to decide.
+   */
+  async setPolicies(kind: ApprovalKind, input: PolicyBandsInput, actor: Actor) {
+    const deciders = new Set(
+      (Object.entries(ROLES) as [string, { permissions: readonly string[] }][])
+        .filter(([, r]) => r.permissions.includes("approvals.decide"))
+        .map(([k]) => k),
+    );
+    const bad = input.bands.findIndex((b) => !deciders.has(b.approver));
+    if (bad >= 0)
+      throw new BadRequestException({
+        message: "Validation failed",
+        issues: [
+          {
+            path: `bands.${bad}.approver`,
+            message: "That role can't decide requests",
+          },
+        ],
+      });
+    return this.db.transaction(async (tx) => {
+      const before = await tx
+        .update(approvalPolicies)
+        .set({ active: false })
+        .where(
+          and(
+            eq(approvalPolicies.kind, kind),
+            eq(approvalPolicies.active, true),
+          ),
+        )
+        .returning();
+      await tx.insert(approvalPolicies).values(
+        input.bands.map((b) => ({
+          kind,
+          minAmount: String(b.min),
+          maxAmount: b.max === null ? null : String(b.max),
+          approverRole: b.approver,
+        })),
+      );
+      await this.audit.record(tx, actor, {
+        action: "approval_policy.changed",
+        entityType: "approval_policy",
+        entityId: kind,
+        before: before.map((p) => ({
+          min: num(p.minAmount),
+          max: num(p.maxAmount),
+          approver: p.approverRole,
+        })),
+        after: input.bands,
+      });
+      return this.policies();
+    });
   }
 }

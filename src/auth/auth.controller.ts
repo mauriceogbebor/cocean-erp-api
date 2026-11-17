@@ -8,8 +8,10 @@ import {
   Post,
 } from "@nestjs/common";
 import {
+  changePasswordSchema,
   loginSchema,
   refreshSchema,
+  type ChangePasswordInput,
   type LoginInput,
 } from "@qorrix-erp/contracts";
 import {
@@ -61,6 +63,16 @@ export class AuthController {
     @CurrentActor() actor: Actor,
   ) {
     await this.auth.logout(body.refreshToken, actor);
+  }
+
+  @Post("password")
+  @HttpCode(204)
+  async changePassword(
+    @Body(new ZodPipe(changePasswordSchema)) body: ChangePasswordInput,
+    @CurrentUser() user: AuthUser,
+    @CurrentActor() actor: Actor,
+  ) {
+    await this.auth.changePassword(user.id, body, actor);
   }
 
   /** Who is signed in, with their roles and permissions. */
