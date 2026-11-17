@@ -178,6 +178,9 @@ export const organizationSettingsSchema = z.object({
   fleet: z.object({
     inductionValidDays: z.number().int().min(30).max(1_095),
     trackerStaleMinutes: z.number().int().min(1).max(1_440),
+    serviceIntervalDays: z.number().int().min(7).max(730),
+    serviceIntervalKm: z.number().int().min(500).max(200_000),
+    workOrderOverrunPct: z.number().min(0).max(0.5),
   }),
 });
 export type OrganizationSettings = z.infer<typeof organizationSettingsSchema>;

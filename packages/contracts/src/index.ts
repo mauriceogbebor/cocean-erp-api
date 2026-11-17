@@ -10,3 +10,4 @@ export * from "./fleet";
 export * from "./stations";
 export * from "./organization";
 export * from "./people";
+export * from "./workshop";

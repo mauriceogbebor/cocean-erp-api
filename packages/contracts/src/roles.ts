@@ -65,6 +65,7 @@ export const ROLES = {
       "roles.read",
       "people.read",
       "payroll.read",
+      "workshop.read",
     ],
   },
   executive: {
@@ -78,6 +79,7 @@ export const ROLES = {
       ...movementRead,
       "approvals.decide",
       "audit.read",
+      "workshop.read",
     ],
   },
   finance: {
@@ -99,6 +101,7 @@ export const ROLES = {
       "people.read",
       "payroll.read",
       "payroll.pay",
+      "workshop.read",
     ],
   },
   sales: {
@@ -145,6 +148,7 @@ export const ROLES = {
       "approvals.decide",
       ...movementRead,
       "liftings.plan",
+      "workshop.read",
     ],
   },
   depot: {
@@ -163,7 +167,13 @@ export const ROLES = {
   fleet: {
     name: "Fleet and maintenance manager",
     description: "Keeps trucks legal, serviced and registered.",
-    permissions: [...requester, ...movementRead, "fleet.manage"],
+    permissions: [
+      ...requester,
+      ...movementRead,
+      "fleet.manage",
+      "workshop.read",
+      "workshop.manage",
+    ],
   },
   station: {
     name: "Station manager",

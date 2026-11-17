@@ -20,6 +20,7 @@ import {
   vehicleDocuments,
   vehiclePositions,
   vehicles,
+  workOrders,
 } from "../db/schema.js";
 import {
   ApprovalHandlers,
@@ -267,6 +268,15 @@ export class FleetService {
       const v = await this.lockVehicle(tx, id);
       if (!v.holdReason)
         throw new ConflictException(`${v.plate} isn't on hold`);
+      if (v.holdWorkOrderId) {
+        const [w] = await tx
+          .select({ number: workOrders.number })
+          .from(workOrders)
+          .where(eq(workOrders.id, v.holdWorkOrderId));
+        throw new ConflictException(
+          `${v.plate} is held by work order ${w?.number ?? ""}; complete or cancel it to clear the hold`,
+        );
+      }
       await this.setVehicle(
         tx,
         id,

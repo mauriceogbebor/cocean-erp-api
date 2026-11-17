@@ -207,9 +207,9 @@ describe("permissions and audit", () => {
 
 describe("approvals", () => {
   // Kinds raised from their own records (orders, payroll) are refused here;
-  // a workshop work order is raised directly.
+  // an "other" request is raised directly.
   const credit = {
-    kind: "work_order",
+    kind: "other",
     ref: "WO-2026-090",
     title: "Engine overhaul for RIV-430-BN",
     amount: 3_720_000,
@@ -243,7 +243,7 @@ describe("approvals", () => {
 
   it("routes by amount: a small work order to Operations, a large one to the Head of Operations", async () => {
     const wo = {
-      kind: "work_order",
+      kind: "other",
       title: "Tyres for LAG-552-EP",
       reason: "Truck blocked from dispatch.",
     };

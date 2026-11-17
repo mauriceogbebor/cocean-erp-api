@@ -26,6 +26,12 @@ export const FLEET_RULES = {
   inductionValidDays: 365,
   /** A tracker that hasn't reported for this long is shown as stale. */
   trackerStaleMinutes: 15,
+  /** A truck is due a service this many days after the last one... */
+  serviceIntervalDays: 90,
+  /** ...or after this many kilometres, whichever comes first. */
+  serviceIntervalKm: 10_000,
+  /** A finished job may cost this much over its estimate before it needs approving again. */
+  workOrderOverrunPct: 0.1,
 } as const;
 
 export const createVehicleSchema = z

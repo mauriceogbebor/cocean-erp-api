@@ -1,12 +1,17 @@
 import { pathToFileURL } from "node:url";
 import { hash } from "@node-rs/argon2";
-import { DEFAULT_ORGANIZATION, type RoleKey } from "@qorrix-erp/contracts";
+import {
+  DEFAULT_ORGANIZATION,
+  lineTotals,
+  type RoleKey,
+} from "@qorrix-erp/contracts";
 import { nextNumber } from "../common/numbering.js";
 import { eq } from "drizzle-orm";
 import { addDays, businessDate } from "../common/dates.js";
 import { createDb, type Db } from "./client.js";
 import { seed } from "./seed.js";
 import {
+  approvalRequests,
   customerLedger,
   customerSites,
   customers,
@@ -27,6 +32,7 @@ import {
   vehicleDocuments,
   vehicles,
   vendors,
+  workOrders,
 } from "./schema.js";
 
 /**
@@ -526,6 +532,190 @@ export async function seedSample(
     });
   });
   await seedSampleStaff(db, password);
+  await seedSampleWorkshop(db);
+}
+
+/**
+ * A few months of workshop history: a service and a repair on RIV-430-BN,
+ * and RIV-512-TX in the workshop before it goes into service. Nothing is
+ * left waiting for approval, and no truck is held.
+ */
+async function seedSampleWorkshop(db: Db) {
+  await db.transaction(async (tx) => {
+    const [done] = await tx
+      .select({ id: workOrders.id })
+      .from(workOrders)
+      .limit(1);
+    if (done) return;
+    const plates = await tx
+      .select({ id: vehicles.id, plate: vehicles.plate })
+      .from(vehicles);
+    const truck = (p: string) => plates.find((v) => v.plate === p)?.id;
+    const riv430 = truck("RIV-430-BN");
+    const riv512 = truck("RIV-512-TX");
+    const who = async (key: string) => {
+      const p = SAMPLE_PEOPLE.find((x) => x.key === key)!;
+      const [u] = await tx
+        .select({ id: users.id })
+        .from(users)
+        .where(eq(users.email, p.email));
+      return u?.id;
+    };
+    const fleet = await who("fleet");
+    const ops = await who("operations");
+    if (!riv430 || !riv512 || !fleet || !ops) return;
+    const today = businessDate();
+    const ago = (days: number) => addDays(today, -days);
+    const at = (day: string, hour = 9) =>
+      new Date(`${day}T${String(hour).padStart(2, "0")}:00:00+01:00`);
+
+    type Line = {
+      kind: "part" | "labour" | "outside";
+      description: string;
+      quantity: number;
+      unitCost: number;
+    };
+    const jobs: {
+      vehicleId: string;
+      kind: string;
+      title: string;
+      lines: Line[];
+      supplierName?: string;
+      odometerKm: number;
+      openedOn: string;
+      completedOn?: string;
+      offRoad: boolean;
+    }[] = [
+      {
+        vehicleId: riv430,
+        kind: "service",
+        title: "10,000 km service",
+        lines: [
+          {
+            kind: "part",
+            description: "Engine oil and filters",
+            quantity: 1,
+            unitCost: 95_000,
+          },
+          {
+            kind: "labour",
+            description: "Service",
+            quantity: 1,
+            unitCost: 30_000,
+          },
+        ],
+        odometerKm: 112_040,
+        openedOn: ago(41),
+        completedOn: ago(40),
+        offRoad: false,
+      },
+      {
+        vehicleId: riv430,
+        kind: "repair",
+        title: "Alternator not charging",
+        lines: [
+          {
+            kind: "part",
+            description: "Alternator, exchange unit",
+            quantity: 1,
+            unitCost: 165_000,
+          },
+          {
+            kind: "outside",
+            description: "Auto-electrician",
+            quantity: 1,
+            unitCost: 45_000,
+          },
+        ],
+        supplierName: "Trans-Amadi Truck Clinic",
+        odometerKm: 115_310,
+        openedOn: ago(26),
+        completedOn: ago(25),
+        offRoad: true,
+      },
+      {
+        vehicleId: riv512,
+        kind: "repair",
+        title: "Compartment 2 bottom valve leaking",
+        lines: [
+          {
+            kind: "part",
+            description: "Bottom valve, 4 inch",
+            quantity: 1,
+            unitCost: 310_000,
+          },
+          {
+            kind: "labour",
+            description: "Fitting and pressure test",
+            quantity: 1,
+            unitCost: 60_000,
+          },
+        ],
+        odometerKm: 98_400,
+        openedOn: ago(3),
+        // Not in service yet, so there's nothing to hold.
+        offRoad: false,
+      },
+    ];
+    for (const j of jobs) {
+      const t = lineTotals(j.lines);
+      const number = await nextNumber(tx, "WO", at(j.openedOn));
+      const [a] = await tx
+        .insert(approvalRequests)
+        .values({
+          kind: "work_order",
+          ref: number,
+          title: `${j.title}`,
+          amount: String(t.total),
+          reason: "Sample data.",
+          requestedBy: fleet,
+          approverRole: "operations",
+          status: "approved",
+          decidedBy: ops,
+          decidedAt: at(j.openedOn, 14),
+          createdAt: at(j.openedOn, 10),
+        })
+        .returning({ id: approvalRequests.id });
+      const [w] = await tx
+        .insert(workOrders)
+        .values({
+          number,
+          vehicleId: j.vehicleId,
+          kind: j.kind,
+          title: j.title,
+          status: j.completedOn ? "completed" : "approved",
+          offRoad: j.offRoad,
+          heldFrom: j.offRoad ? at(j.openedOn) : null,
+          releasedAt: j.offRoad && j.completedOn ? at(j.completedOn, 16) : null,
+          odometerKm: j.odometerKm,
+          supplierName: j.supplierName ?? null,
+          estimateLines: j.lines,
+          estimate: String(t.total),
+          ...(j.completedOn
+            ? {
+                actualLines: j.lines,
+                partsCost: String(t.part),
+                labourCost: String(t.labour),
+                outsideCost: String(t.outside),
+                actualCost: String(t.total),
+                completedOn: j.completedOn,
+              }
+            : {}),
+          approvalId: a.id,
+          openedBy: fleet,
+          createdAt: at(j.openedOn),
+        })
+        .returning();
+      if (j.offRoad && !j.completedOn)
+        await tx
+          .update(vehicles)
+          .set({
+            holdReason: `Work order ${number}: ${j.title}`,
+            holdWorkOrderId: w.id,
+          })
+          .where(eq(vehicles.id, j.vehicleId));
+    }
+  });
 }
 
 /**

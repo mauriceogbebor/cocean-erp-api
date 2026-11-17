@@ -934,6 +934,8 @@ export const vehicles = pgTable(
     status: vehicleStatus("status").notNull().default("onboarding"),
     /** Off the road until cleared: a defect, an accident, an investigation. */
     holdReason: text("hold_reason"),
+    /** Set when an open work order put the hold on; only closing it clears the hold. */
+    holdWorkOrderId: uuid("hold_work_order_id"),
     createdBy: uuid("created_by")
       .notNull()
       .references(() => users.id),
@@ -1318,4 +1320,65 @@ export const payrollLines = pgTable(
     flags: jsonb("flags").$type<string[]>().notNull(),
   },
   (t) => [uniqueIndex("payroll_lines_run_employee").on(t.runId, t.employeeId)],
+);
+
+// ── Workshop: work orders and what they cost ────────────────────────────────
+export const workOrderStatus = pgEnum("work_order_status", [
+  "draft",
+  "submitted",
+  "approved",
+  "rejected",
+  "overrun",
+  "completed",
+  "cancelled",
+]);
+
+type WorkLineRow = {
+  kind: "part" | "labour" | "outside";
+  description: string;
+  quantity: number;
+  unitCost: number;
+};
+
+export const workOrders = pgTable(
+  "work_orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    status: workOrderStatus("status").notNull().default("draft"),
+    offRoad: boolean("off_road").notNull(),
+    /** When this work order took the truck off the road, and when it went back. */
+    heldFrom: timestamp("held_from", { withTimezone: true }),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    odometerKm: integer("odometer_km"),
+    supplierName: text("supplier_name"),
+    estimateLines: jsonb("estimate_lines").$type<WorkLineRow[]>(),
+    estimate: numeric("estimate", { precision: 18, scale: 2 }),
+    actualLines: jsonb("actual_lines").$type<WorkLineRow[]>(),
+    partsCost: numeric("parts_cost", { precision: 18, scale: 2 }),
+    labourCost: numeric("labour_cost", { precision: 18, scale: 2 }),
+    outsideCost: numeric("outside_cost", { precision: 18, scale: 2 }),
+    actualCost: numeric("actual_cost", { precision: 18, scale: 2 }),
+    completedOn: date("completed_on"),
+    completionNote: text("completion_note"),
+    cancelReason: text("cancel_reason"),
+    approvalId: uuid("approval_id").references(() => approvalRequests.id),
+    openedBy: uuid("opened_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("work_orders_number_key").on(t.number),
+    index("work_orders_vehicle_idx").on(t.vehicleId, t.createdAt),
+    index("work_orders_status_idx").on(t.status),
+    index("work_orders_completed_idx").on(t.completedOn),
+  ],
 );

@@ -59,10 +59,9 @@ export class OrganizationService implements OnModuleInit, OnModuleDestroy {
     }
     // Fill in anything added since the row was saved, so a newer release
     // never meets settings without a key it needs.
-    const s = organizationSettingsSchema.parse({
-      ...DEFAULT_ORGANIZATION,
-      ...(row.settings as object),
-    });
+    const s = organizationSettingsSchema.parse(
+      withDefaults(row.settings as Record<string, unknown>),
+    );
     setOrg(s);
     return s;
   }
@@ -103,3 +102,15 @@ export class OrganizationService implements OnModuleInit, OnModuleDestroy {
     });
   }
 }
+
+/** Saved settings over the defaults, one level deep, so a group that gains a key still parses. */
+export function withDefaults(saved: Record<string, unknown>) {
+  const out: Record<string, unknown> = { ...DEFAULT_ORGANIZATION };
+  for (const [k, v] of Object.entries(saved ?? {})) {
+    const d = out[k];
+    out[k] = isGroup(d) && isGroup(v) ? { ...d, ...v } : v;
+  }
+  return out;
+}
+const isGroup = (v: unknown): v is Record<string, unknown> =>
+  !!v && typeof v === "object" && !Array.isArray(v);

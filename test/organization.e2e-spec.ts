@@ -1,7 +1,11 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { INestApplication } from "@nestjs/common";
 import request from "supertest";
-import { DEFAULT_ORGANIZATION } from "@qorrix-erp/contracts";
+import {
+  DEFAULT_ORGANIZATION,
+  organizationSettingsSchema,
+} from "@qorrix-erp/contracts";
+import { withDefaults } from "../src/organization/organization.service.js";
 import { ADMIN, as, freshDatabase, login, startApp } from "./harness.js";
 
 let app: INestApplication;
@@ -123,5 +127,22 @@ describe("organization settings", () => {
         state: "Greater Accra",
       })
       .expect(201);
+  });
+});
+
+describe("settings saved by an older release", () => {
+  it("fills in keys a newer release added inside a group", () => {
+    const saved = {
+      ...DEFAULT_ORGANIZATION,
+      name: "Older install",
+      fleet: { inductionValidDays: 180, trackerStaleMinutes: 20 },
+    };
+    const s = organizationSettingsSchema.parse(withDefaults(saved));
+    expect(s.name).toBe("Older install");
+    expect(s.fleet).toMatchObject({
+      inductionValidDays: 180,
+      serviceIntervalDays: DEFAULT_ORGANIZATION.fleet.serviceIntervalDays,
+    });
+    expect(s.regions).toEqual(DEFAULT_ORGANIZATION.regions);
   });
 });

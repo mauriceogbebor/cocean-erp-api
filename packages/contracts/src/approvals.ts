@@ -13,6 +13,7 @@ export const APPROVAL_KINDS = {
   price_list: "Price list",
   vendor_bank: "Supplier bank details",
   shift_variance: "Station or plant shift that doesn't balance",
+  other: "Other request needing sign-off",
 } as const;
 export type ApprovalKind = keyof typeof APPROVAL_KINDS;
 export const approvalKinds = Object.keys(APPROVAL_KINDS) as [
@@ -55,4 +56,6 @@ export const DEFAULT_POLICIES: PolicyDef[] = [
   { kind: "vendor_bank", min: 0, max: null, approver: "finance" },
   { kind: "shift_variance", min: 0, max: 1_000_000, approver: "operations" },
   { kind: "shift_variance", min: 1_000_000, max: null, approver: "executive" },
+  { kind: "other", min: 0, max: 1_000_000, approver: "operations" },
+  { kind: "other", min: 1_000_000, max: null, approver: "executive" },
 ];

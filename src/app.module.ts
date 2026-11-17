@@ -20,6 +20,8 @@ import { FinanceController } from "./finance/finance.controller.js";
 import { ReceivablesService } from "./finance/receivables.service.js";
 import { FleetController } from "./fleet/fleet.controller.js";
 import { FleetService } from "./fleet/fleet.service.js";
+import { WorkshopController } from "./workshop/workshop.controller.js";
+import { WorkshopService } from "./workshop/workshop.service.js";
 import { TrackingService } from "./fleet/tracking.service.js";
 import { LpgService } from "./stations/lpg.service.js";
 import { StationsController } from "./stations/stations.controller.js";
@@ -85,6 +87,7 @@ export class AppModule {
         StockController,
         LiftingsController,
         FleetController,
+        WorkshopController,
         StationsController,
       ],
       providers: [
@@ -110,6 +113,7 @@ export class AppModule {
         StockService,
         LiftingsService,
         FleetService,
+        WorkshopService,
         TrackingService,
         StationsService,
         LpgService,

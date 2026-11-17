@@ -45,6 +45,9 @@ export const PERMISSIONS = {
   "fleet.read": "See vehicles, drivers, their papers and positions",
   "fleet.manage":
     "Register vehicles and drivers, record papers, hold and suspend",
+  "workshop.read": "See work orders, repair costs and servicing",
+  "workshop.manage":
+    "Open work orders, price them, record the work done and cancel them",
   "stations.read": "See stations, pumps, shifts and LPG fills",
   "stations.manage": "Set up pumps and assign people to sites",
   "stations.operate":

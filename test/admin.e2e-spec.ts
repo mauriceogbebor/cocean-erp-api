@@ -85,7 +85,7 @@ describe("passwords", () => {
 
 describe("approval limits", () => {
   const wo = (ref: string, amount: number) => ({
-    kind: "work_order",
+    kind: "other",
     ref,
     title: "Brake pads for RIV-430-BN",
     amount,
@@ -103,9 +103,9 @@ describe("approval limits", () => {
         { min: 250_000, max: null, approver: "executive" },
       ],
     };
-    await sales.put("/v1/approvals/policies/work_order", bands).expect(403);
+    await sales.put("/v1/approvals/policies/other", bands).expect(403);
     const gap = await admin
-      .put("/v1/approvals/policies/work_order", {
+      .put("/v1/approvals/policies/other", {
         bands: [
           { min: 0, max: 250_000, approver: "operations" },
           { min: 300_000, max: null, approver: "executive" },
@@ -114,7 +114,7 @@ describe("approval limits", () => {
       .expect(400);
     expect(gap.body.issues[0].path).toBe("bands.1.min");
     const noDecide = await admin
-      .put("/v1/approvals/policies/work_order", {
+      .put("/v1/approvals/policies/other", {
         bands: [{ min: 0, max: null, approver: "sales" }],
       })
       .expect(400);
@@ -127,10 +127,10 @@ describe("approval limits", () => {
       .expect(201);
     expect(before.body.approverRole).toBe("operations");
     const r = await admin
-      .put("/v1/approvals/policies/work_order", bands)
+      .put("/v1/approvals/policies/other", bands)
       .expect(200);
     expect(
-      r.body.filter((p: { kind: string }) => p.kind === "work_order"),
+      r.body.filter((p: { kind: string }) => p.kind === "other"),
     ).toHaveLength(2);
     const after = await sales
       .post("/v1/approvals", wo("WO-2026-102", 486_000))
@@ -151,7 +151,7 @@ describe("approval limits", () => {
       .expect(200);
     expect(a.body[0]).toMatchObject({
       action: "approval_policy.changed",
-      entityId: "work_order",
+      entityId: "other",
       actorName: "System administrator",
     });
     expect(a.body[0].before[0]).toMatchObject({
