@@ -5,11 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import {
-  STOCK_RULES,
-  type CreateTankInput,
-  type DipInput,
-} from "@cocean/contracts";
+import { type CreateTankInput, type DipInput } from "@qorrix-erp/contracts";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.js";
 import { dips, products, sites, stockMovements, tanks } from "../db/schema.js";
@@ -20,10 +16,11 @@ import {
 import { ApprovalsService } from "../approvals/approvals.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
-import { lagosDate } from "../common/dates.js";
+import { businessDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { DB } from "../common/tokens.js";
 import { PricingService } from "../pricing/pricing.service.js";
+import { org } from "../common/org.js";
 
 type Tank = typeof tanks.$inferSelect;
 type Kind = (typeof stockMovements.$inferSelect)["kind"];
@@ -86,7 +83,7 @@ export class StockService {
     const unit = await this.unit(tx, tank.productCode);
     if (after < 0)
       throw new UnprocessableEntityException(
-        `${tank.code} holds ${before.toLocaleString("en-NG")} ${unit}; ${Math.abs(m.quantity).toLocaleString("en-NG")} can't come out of it`,
+        `${tank.code} holds ${before.toLocaleString(org().locale)} ${unit}; ${Math.abs(m.quantity).toLocaleString(org().locale)} can't come out of it`,
       );
     if (
       m.quantity > 0 &&
@@ -94,7 +91,7 @@ export class StockService {
       after > Number(tank.safeCapacity)
     )
       throw new UnprocessableEntityException(
-        `${tank.code} would hold ${after.toLocaleString("en-NG")} ${unit}, above its safe capacity of ${Number(tank.safeCapacity).toLocaleString("en-NG")}`,
+        `${tank.code} would hold ${after.toLocaleString(org().locale)} ${unit}, above its safe capacity of ${Number(tank.safeCapacity).toLocaleString(org().locale)}`,
       );
     await tx.insert(stockMovements).values({
       tankId: tank.id,
@@ -221,7 +218,7 @@ export class StockService {
     user: AuthUser,
     actor: Actor,
   ) {
-    if (input.dippedOn > lagosDate())
+    if (input.dippedOn > businessDate())
       throw new UnprocessableEntityException(
         "A dip can't be dated in the future",
       );
@@ -242,8 +239,8 @@ export class StockService {
       const book = await this.onHand(tx, tankId);
       const variance = q3(input.quantity - book);
       const tolerance = Math.max(
-        STOCK_RULES.dipTolerancePct * book,
-        STOCK_RULES.dipToleranceMin,
+        org().stock.dipTolerancePct * book,
+        org().stock.dipToleranceMin,
       );
       const within = Math.abs(variance) <= tolerance;
       const [d] = await tx
@@ -282,9 +279,9 @@ export class StockService {
           {
             kind: "variance",
             ref: `${tank.code} ${input.dippedOn}`,
-            title: `${tank.code}: dip ${variance > 0 ? "over" : "under"} book by ${Math.abs(variance).toLocaleString("en-NG")} ${unit}`,
+            title: `${tank.code}: dip ${variance > 0 ? "over" : "under"} book by ${Math.abs(variance).toLocaleString(org().locale)} ${unit}`,
             amount: value,
-            reason: `Dipped ${input.quantity.toLocaleString("en-NG")} ${unit} against book ${book.toLocaleString("en-NG")} ${unit}${input.temperature !== undefined ? ` at ${input.temperature} °C` : ""}; tolerance ±${Math.round(tolerance).toLocaleString("en-NG")} ${unit}.${input.notes ? ` ${input.notes}` : ""}${value ? ` About ₦${value.toLocaleString("en-NG")} at list price.` : ""}`,
+            reason: `Dipped ${input.quantity.toLocaleString(org().locale)} ${unit} against book ${book.toLocaleString(org().locale)} ${unit}${input.temperature !== undefined ? ` at ${input.temperature} °C` : ""}; tolerance ±${Math.round(tolerance).toLocaleString(org().locale)} ${unit}.${input.notes ? ` ${input.notes}` : ""}${value ? ` About ${org().currency.symbol}${value.toLocaleString(org().locale)} at list price.` : ""}`,
           },
           user.id,
           actor,

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { INestApplication } from "@nestjs/common";
 import { Client } from "pg";
 import request from "supertest";
-import { lagosDate } from "../src/common/dates.js";
+import { businessDate } from "../src/common/dates.js";
 import {
   ADMIN,
   as,
@@ -17,40 +17,40 @@ import {
 let app: INestApplication;
 const people = {
   sales: {
-    email: "tunde@cocean.test",
+    email: "tunde@erp.test",
     name: "Tunde Adeyemi",
     roles: ["sales"],
   },
   finance: {
-    email: "amina@cocean.test",
+    email: "amina@erp.test",
     name: "Amina Bello",
     roles: ["finance"],
   },
-  md: { email: "kelechi@cocean.test", name: "Kelechi Amadi", roles: ["md"] },
+  md: { email: "kelechi@erp.test", name: "Kelechi Amadi", roles: ["md"] },
   ops: {
-    email: "chinonso@cocean.test",
+    email: "chinonso@erp.test",
     name: "Chinonso Okafor",
     roles: ["operations"],
   },
-  depot: { email: "sani@cocean.test", name: "Sani Garba", roles: ["depot"] },
+  depot: { email: "sani@erp.test", name: "Sani Garba", roles: ["depot"] },
   both: {
-    email: "ada@cocean.test",
+    email: "ada@erp.test",
     name: "Ada Eke",
     roles: ["operations", "depot"],
   },
   security: {
-    email: "musa@cocean.test",
+    email: "musa@erp.test",
     name: "Musa Abdullahi",
     roles: ["security"],
   },
   buyer: {
-    email: "ifeoma@cocean.test",
+    email: "ifeoma@erp.test",
     name: "Ifeoma Nnaji",
     roles: ["procurement"],
   },
-  fleet: { email: "emeka@cocean.test", name: "Emeka Obi", roles: ["fleet"] },
+  fleet: { email: "emeka@erp.test", name: "Emeka Obi", roles: ["fleet"] },
   exec: {
-    email: "adaeze@cocean.test",
+    email: "adaeze@erp.test",
     name: "Adaeze Nwosu",
     roles: ["executive"],
   },
@@ -58,7 +58,7 @@ const people = {
 type Who = keyof typeof people | "admin";
 const PASSWORD = "a-good-long-password";
 const u = {} as Record<Who, ReturnType<typeof as>>;
-const today = lagosDate();
+const today = businessDate();
 const ids = {
   truck: "",
   truck2: "",

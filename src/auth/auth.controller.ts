@@ -7,7 +7,11 @@ import {
   Inject,
   Post,
 } from "@nestjs/common";
-import { loginSchema, refreshSchema, type LoginInput } from "@cocean/contracts";
+import {
+  loginSchema,
+  refreshSchema,
+  type LoginInput,
+} from "@qorrix-erp/contracts";
 import {
   type Actor,
   type AuthUser,

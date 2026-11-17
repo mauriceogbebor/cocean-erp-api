@@ -18,7 +18,7 @@ import {
   type ConfirmDeliveryInput,
   type LoadLiftingInput,
   type PlanLiftingInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { z } from "zod";
 import {
   type Actor,

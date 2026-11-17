@@ -1,16 +1,20 @@
-# Cocean ERP: architecture
+# Qorrix ERP: architecture
+
+Qorrix ERP runs a petroleum distributor: depots, tanks, trucks, stations and
+LPG plants, with sales, buying, receivables and approvals around them. Each
+installation serves one organization (its own deployment and database).
 
 Two repositories:
 
 | Repo                    | What                                                                             | Talks to                                                       |
 | ----------------------- | -------------------------------------------------------------------------------- | -------------------------------------------------------------- |
-| `cocean-erp-api` (this) | NestJS API, PostgreSQL, migrations, shared contracts                             | PostgreSQL; later trackers, weighbridges, banks, SMS and email |
-| `cocean-erp-platform`   | Next.js web app: screens and design system (and, on `main`/`dev`, the prototype) | This API only                                                  |
+| `qorrix-erp-api` (this) | NestJS API, PostgreSQL, migrations, shared contracts                             | PostgreSQL; later trackers, weighbridges, banks, SMS and email |
+| `qorrix-erp-platform`   | Next.js web app: screens and design system (and, on `main`/`dev`, the prototype) | This API only                                                  |
 
 ## How the web app connects
 
 - The web app never talks to the database. Its server side (Server
-  Components and server actions under `/live`) calls `<COCEAN_API_URL>/v1/...`.
+  Components and server actions under `/live`) calls `<API_URL>/v1/...`.
 - Sign-in is a server action that calls `/v1/auth/login` and keeps the access
   and refresh tokens in httpOnly cookies; the browser never sees them.
 - The web app's `proxy.ts` refreshes the access token a minute before it
@@ -24,9 +28,9 @@ Two repositories:
 - CORS allows only the web app's origin (`WEB_ORIGIN`), for any calls made
   from the browser.
 - **Shared contracts.** `packages/contracts` is published as
-  `@cocean/contracts`. The web app mirrors the few request schemas its forms
+  `@qorrix-erp/contracts`. The web app mirrors the few request schemas its forms
   need until the package is installable from GitHub or a private registry:
-  `"@cocean/contracts": "github:mauriceogbebor/cocean-erp-api#main&path:packages/contracts"`.
+  `"@qorrix-erp/contracts": "github:mauriceogbebor/qorrix-erp-api#main&path:packages/contracts"`.
 
 ## Inside the API
 
@@ -34,7 +38,9 @@ Two repositories:
 src/
   config/        environment, validated at start
   db/            Drizzle schema, client, migrate and seed entry points
-  common/        guards (who you are, what you may do), zod pipe, request ids
+  common/        guards (who you are, what you may do), zod pipe, request ids,
+                 org(): the organization's settings, money and business dates
+  organization/  the organization's settings (one row), cached per process
   auth/          sign-in, refresh rotation, logout, me
   access/        roles and permissions
   users/         user accounts and role assignment
@@ -71,17 +77,17 @@ test/                e2e tests against a real database
 
 ## Receivables (Phase 2), built
 
-| Concern   | How                                                                                                                                                                                                                         |
-| --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Ledger    | `customer_ledger` holds every opening balance, invoice, receipt and reversal as a signed amount; the balance is the sum. A trigger makes it append-only, so a mistake is corrected with a new entry.                        |
-| Receipts  | Finance records money as it shows on the bank statement. Each bank reference is recorded once. A wrong receipt is reversed by a second Finance user, with a reason; the original and its reversal both stay on the account. |
-| Release   | Finance releases an order when money or credit covers it: ledger balance plus released, uninvoiced orders plus this order must fit under the limit (zero for prepaid). Sales can't release.                                 |
-| Invoices  | One per released order, at the order's prices. Prices are VAT-inclusive and VAT is shown out of them at the product's rate (zero until Cocean confirms). Due date is the issue date plus the customer's credit days.        |
-| Reporting | Customer statement with running balance. Aged receivables as at any date: money in is applied to the oldest amount due first, the rest aged current, 1-30, 31-60, 61-90, 90+ days past due; unused money is on account.     |
+| Concern   | How                                                                                                                                                                                                                            |
+| --------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Ledger    | `customer_ledger` holds every opening balance, invoice, receipt and reversal as a signed amount; the balance is the sum. A trigger makes it append-only, so a mistake is corrected with a new entry.                           |
+| Receipts  | Finance records money as it shows on the bank statement. Each bank reference is recorded once. A wrong receipt is reversed by a second Finance user, with a reason; the original and its reversal both stay on the account.    |
+| Release   | Finance releases an order when money or credit covers it: ledger balance plus released, uninvoiced orders plus this order must fit under the limit (zero for prepaid). Sales can't release.                                    |
+| Invoices  | One per released order, at the order's prices. Prices are VAT-inclusive and VAT is shown out of them at the product's rate (zero until the organization confirms). Due date is the issue date plus the customer's credit days. |
+| Reporting | Customer statement with running balance. Aged receivables as at any date: money in is applied to the oldest amount due first, the rest aged current, 1-30, 31-60, 61-90, 90+ days past due; unused money is on account.        |
 
 Not yet: posting to a general ledger (open decision), invoicing per delivery
 (Phase 3), credit notes, and bank statement import. Opening balances should be
-loaded once from Cocean's old system, not typed by Sales.
+loaded once from the organization's old system, not typed by Sales.
 
 ## Procurement (Phase 2), built
 
@@ -109,7 +115,7 @@ supplier, withholding tax on payment, and posting stock receipts to inventory
 | Exceptions | Security closes an exception with a written finding. Until then the delivery can't be invoiced.                                                                                                                                                                                                                                                                   |
 | Invoicing  | Each confirmed delivery is invoiced for the quantity received, at the order's price. An order delivered by truck can't also be invoiced whole; it is invoiced once every line is loaded in full and every delivery invoiced. Credit exposure counts released orders less what is already invoiced against them.                                                   |
 
-Placeholders to agree with Cocean: the tolerances (`STOCK_RULES` in the contracts), whether customers pay for loaded or received quantity, and who absorbs transit loss. Not yet: temperature correction to standard volume (dips record temperature for it), tank-to-tank transfers, sending delivery links by SMS (the link is returned to the depot on loading), and rate limiting on the public confirmation endpoint.
+Each organization sets its tolerances in its settings (defaults in `STOCK_RULES`). To agree with each organization: whether customers pay for loaded or received quantity, and who absorbs transit loss. Not yet: temperature correction to standard volume (dips record temperature for it), tank-to-tank transfers, sending delivery links by SMS (the link is returned to the depot on loading), and rate limiting on the public confirmation endpoint.
 
 ## Fleet and tracking (Phase 4), built
 
@@ -147,11 +153,21 @@ Not yet, waiting on decisions: shift handover between attendants on one day, POS
 6. Money is `numeric(18,2)` in naira; quantities in litres or kilograms as the
    product says; times are stored in UTC and shown in Africa/Lagos.
 
-## Decisions still open (with Cocean, first two weeks)
+## Organization settings, built
 
-- Ledger in this platform or posting to Cocean's existing accounting system.
+| Concern      | How                                                                                                                                                                                                                                                                                                                                                                                                              |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| One row      | `organization` holds one row (id 1) of `OrganizationSettings` (contracts): name, legal name, logo, currency, locale, time zone, states or regions, banks, ID formats, default VAT, truck papers, and the stock, station and fleet tolerances. `pnpm db:seed` creates it on Nigerian defaults (`SEED_ORG_NAME` names it); an administrator (`settings.manage`) changes it in the app, and each change is audited. |
+| Reading      | Each API process caches the settings (`org()`), so checks read them without a query. A change applies at once in the process that saved it and within a minute in any other. Settings saved by an older release are filled in from the defaults when read.                                                                                                                                                       |
+| IDs          | Contract schemas accept any reasonable phone number, plate, bank account or tax ID. The API then checks the field against the organization's pattern, and the message quotes its example. Sites and delivery addresses must use one of its states or regions.                                                                                                                                                    |
+| Truck papers | A list of `{ key, label, requiredFor }`. The regulator's permit is just one entry (NMDPRA by default); labels can change freely. Keep keys once papers are recorded against them.                                                                                                                                                                                                                                |
+| Sign-in      | `GET /v1/organization/public` gives the name, logo, currency, locale and time zone without an account; everything else needs sign-in.                                                                                                                                                                                                                                                                            |
+
+## Decisions to agree with each organization (first two weeks)
+
+- Ledger in this platform or posting to the organization's existing accounting system.
 - VAT treatment per product, and whether price lists stay VAT-inclusive.
-- Hosting (Cocean's servers or a cloud provider) and single sign-on.
+- Hosting (the organization's servers or a cloud provider) and single sign-on.
 - Tracker (Arc Tracker, Trakzee), weighbridge and bank interfaces.
-- Tax and payroll rules confirmed by Cocean's tax adviser.
+- Tax and payroll rules confirmed by the organization's tax adviser.
 - Opening data to migrate, and from where.

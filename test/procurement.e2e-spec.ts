@@ -1,38 +1,38 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { INestApplication } from "@nestjs/common";
-import { addDays, lagosDate } from "../src/common/dates.js";
+import { addDays, businessDate } from "../src/common/dates.js";
 import { ADMIN, as, freshDatabase, login, startApp } from "./harness.js";
 
 let app: INestApplication;
 const people = {
   buyer: {
-    email: "femi@cocean.test",
+    email: "femi@erp.test",
     name: "Femi Ojo",
     roles: ["procurement"],
   },
   finance: {
-    email: "amina@cocean.test",
+    email: "amina@erp.test",
     name: "Amina Bello",
     roles: ["finance"],
   },
   finance2: {
-    email: "ngozi@cocean.test",
+    email: "ngozi@erp.test",
     name: "Ngozi Eze",
     roles: ["finance"],
   },
   exec: {
-    email: "ifeanyi@cocean.test",
+    email: "ifeanyi@erp.test",
     name: "Ifeanyi Nwosu",
     roles: ["executive"],
   },
-  depot: { email: "bayo@cocean.test", name: "Bayo Lawal", roles: ["depot"] },
+  depot: { email: "bayo@erp.test", name: "Bayo Lawal", roles: ["depot"] },
   both: {
-    email: "sade@cocean.test",
+    email: "sade@erp.test",
     name: "Sade Bakare",
     roles: ["procurement", "depot"],
   },
   sales: {
-    email: "tunde@cocean.test",
+    email: "tunde@erp.test",
     name: "Tunde Adeyemi",
     roles: ["sales"],
   },
@@ -40,7 +40,7 @@ const people = {
 type Who = keyof typeof people | "admin";
 const PASSWORD = "a-good-long-password";
 const u = {} as Record<Who, ReturnType<typeof as>>;
-const today = lagosDate();
+const today = businessDate();
 const ids = { site: "", vendor: "", po: "", line: "", bill: "" };
 
 const decide = (

@@ -1,11 +1,19 @@
-# Cocean ERP API
+# Qorrix ERP API
 
-The backend for Cocean Nigeria Integrated Limited's ERP, built by Qorrix
-Technologies Limited. NestJS 12 (ESM) over PostgreSQL 16 with Drizzle ORM.
+The backend of Qorrix ERP, an ERP for petroleum distributors built by Qorrix
+Technologies Limited: depots, tanks, trucks, stations and LPG plants, with
+sales, buying, receivables and approvals around them. NestJS 12 (ESM) over
+PostgreSQL 16 with Drizzle ORM.
 
-The web app lives in its own repository (`cocean-erp-platform`) and talks to
+Each installation serves one organization. Its name, logo, currency, time
+zone, formats (phone numbers, plates, bank accounts, tax IDs), states, banks,
+truck papers and tolerances are its **organization settings**
+(`/v1/organization`), which an administrator changes in the app. A new
+installation starts on Nigerian defaults.
+
+The web app lives in its own repository and talks to
 this API over HTTPS. Shared roles, permissions and request schemas are in
-`packages/contracts` (`@cocean/contracts`), which the web app installs so both
+`packages/contracts` (`@qorrix-erp/contracts`), which the web app installs so both
 sides validate the same way. See `docs/architecture.md`.
 
 ## Run it locally
@@ -18,7 +26,7 @@ pnpm db:up                      # PostgreSQL in Docker on :5432
 cp .env.example .env            # then edit
 set -a; source .env; set +a
 pnpm db:migrate                 # builds, then applies migrations
-pnpm db:seed                    # roles, permissions, approval limits, products, first admin
+pnpm db:seed                    # roles, permissions, approval limits, products, settings, first admin
 pnpm dev                        # http://localhost:4000, restarts on change
 ```
 
@@ -26,15 +34,15 @@ Check it: `curl localhost:4000/health`.
 
 ### Sample data
 
-For development and Cocean's trial runs, load the people and records the
-clickable demo uses (Kelechi, Adaeze, Tunde, Amina, Chidinma, Ifeoma, Chinonso, Sani, Musa, Emeka, Blessing and Obinna; two customers, an
+For development, demos and trial runs, load Northwind Petroleum, a made-up
+Nigerian distributor with the people and records the clickable demo uses (Kelechi, Adaeze, Tunde, Amina, Chidinma, Ifeoma, Chinonso, Sani, Musa, Emeka, Blessing, Obinna and Ifeanyi the administrator; two customers, an
 approved price list, tanks at Onne with stock, two suppliers, three trucks and two drivers, the Owerri station with three pumps and the Aba LPG plant with four cylinders):
 
 ```bash
 SAMPLE_PASSWORD=choose-a-password pnpm db:seed:sample
 ```
 
-Everyone signs in as `first.last@cocean.dev` with that password. It refuses
+Everyone signs in as `first.last@northwind.example` with that password. It refuses
 to run in production and does nothing if it has run before.
 
 ## Tests
@@ -42,8 +50,8 @@ to run in production and does nothing if it has run before.
 End-to-end tests rebuild a test database from scratch on every run.
 
 ```bash
-createdb -h localhost -U cocean cocean_test   # once
-pnpm test        # TEST_DATABASE_URL defaults to postgres://cocean:cocean@localhost:5432/cocean_test
+createdb -h localhost -U erp erp_test   # once
+pnpm test        # TEST_DATABASE_URL defaults to postgres://erp:erp@localhost:5432/erp_test
 ```
 
 ## Endpoints (v1)
@@ -99,6 +107,8 @@ pnpm test        # TEST_DATABASE_URL defaults to postgres://cocean:cocean@localh
 | POST · PATCH       | /v1/vehicles · /:id/documents · /:id/hold · /:id/clear-hold · /v1/drivers · /drivers/:id · /:id/suspend · /:id/reinstate | fleet.manage                                         |
 | POST               | /v1/vehicles/:id/submit (raises a truck_onboarding approval)                                                             | fleet.manage, approvals.request                      |
 | POST               | /v1/tracking/pings (from the tracker provider)                                                                           | public, `X-Tracker-Key` = `TRACKER_API_KEY`          |
+| GET                | /v1/organization/public (name, logo, currency, locale, time zone)                                                        | public                                               |
+| GET · PUT          | /v1/organization (settings) · PUT needs settings.manage                                                                  | signed in · settings.manage                          |
 | GET                | /v1/stations · /v1/pumps · /v1/shifts · /v1/shifts/:id · /v1/cylinders · /v1/fills (open fills at a plant)               | stations.read                                        |
 | PUT · POST         | /v1/users/:id/sites · /v1/pumps                                                                                          | stations.manage                                      |
 | POST               | /v1/tanks/:id/receipts · /v1/shifts (close) · /v1/fills · /v1/cylinders · /v1/cylinders/:id/condemn (own sites only)     | stations.operate                                     |

@@ -9,11 +9,10 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import {
-  STOCK_RULES,
   type ConfirmDeliveryInput,
   type LoadLiftingInput,
   type PlanLiftingInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { and, asc, desc, eq, inArray, ne, or, type SQL } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.js";
 import {
@@ -34,13 +33,14 @@ import { nextNumber } from "../common/numbering.js";
 import { DB } from "../common/tokens.js";
 import { FleetService } from "../fleet/fleet.service.js";
 import { StockService } from "../stock/stock.service.js";
+import { org } from "../common/org.js";
 
 type Lifting = typeof liftings.$inferSelect;
 type Drop = typeof liftingDrops.$inferSelect;
 type Status = Lifting["status"];
 const sha256 = (s: string) => createHash("sha256").update(s).digest("hex");
 const q3 = (n: number) => Math.round(n * 1000) / 1000;
-const fmt = (n: number) => n.toLocaleString("en-NG");
+const fmt = (n: number) => n.toLocaleString(org().locale);
 
 /** What a drop counts against its order line: loaded once loaded, planned before. */
 const committed = (d: Drop) => Number(d.loadedQuantity ?? d.plannedQuantity);
@@ -377,7 +377,7 @@ export class LiftingsService {
         });
         const token = randomBytes(24).toString("base64url");
         const expiresAt = new Date(
-          Date.now() + STOCK_RULES.deliveryLinkDays * 86_400_000,
+          Date.now() + org().stock.deliveryLinkDays * 86_400_000,
         );
         await tx
           .update(liftingDrops)
@@ -438,7 +438,7 @@ export class LiftingsService {
         );
       if (drop.tokenExpiresAt && drop.tokenExpiresAt < new Date())
         throw new GoneException(
-          "This delivery link has expired. Ask Cocean's logistics team for a new one.",
+          `This delivery link has expired. Ask ${org().name}'s logistics team for a new one.`,
         );
       if (drop.status !== "in_transit")
         throw new ConflictException("This delivery is already confirmed");
@@ -459,7 +459,7 @@ export class LiftingsService {
           "The seals the receiver entered don't match the seals fitted at the depot",
         );
       const diff = q3(input.receivedQuantity - loaded);
-      if (Math.abs(diff) > STOCK_RULES.deliveryTolerancePct * loaded)
+      if (Math.abs(diff) > org().stock.deliveryTolerancePct * loaded)
         exceptions.push(
           `Received ${fmt(input.receivedQuantity)} ${line.unit} against ${fmt(loaded)} loaded: ${diff < 0 ? "short" : "over"} by ${fmt(Math.abs(diff))} (${((Math.abs(diff) / loaded) * 100).toFixed(2)}%)`,
         );
@@ -499,8 +499,7 @@ export class LiftingsService {
     return {
       recorded: true,
       reference: outcome.reference,
-      message:
-        "Thank you. Your confirmation is recorded. Cocean will contact you if anything needs checking.",
+      message: `Thank you. Your confirmation is recorded. ${org().name} will contact you if anything needs checking.`,
     };
   }
 

@@ -6,7 +6,7 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { hash } from "@node-rs/argon2";
-import type { CreateUserInput, RoleKey } from "@cocean/contracts";
+import type { CreateUserInput, RoleKey } from "@qorrix-erp/contracts";
 import { asc, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { sessions, userRoles, users } from "../db/schema.js";

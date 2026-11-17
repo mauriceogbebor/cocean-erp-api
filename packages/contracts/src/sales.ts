@@ -4,10 +4,7 @@ const money = z.number().nonnegative().max(1e14);
 const phone = z
   .string()
   .trim()
-  .regex(
-    /^(\+234|0)[789][01]\d{8}$/,
-    "Enter a Nigerian number, like 08031234567",
-  );
+  .regex(/^\+?[\d ()-]{7,20}$/, "Enter a phone number");
 
 export const customerKinds = [
   "industrial",
@@ -29,11 +26,8 @@ export const createCustomerSchema = z.object({
     .regex(/^CUS-\d{3,6}$/, "Codes look like CUS-107"),
   name: z.string().trim().min(3).max(200),
   kind: z.enum(customerKinds),
-  tin: z
-    .string()
-    .trim()
-    .regex(/^\d{8}-\d{4}$/, "Tax IDs look like 12345678-0001")
-    .optional(),
+  /** Checked against the organization's tax ID format. */
+  tin: z.string().trim().min(3).max(30).optional(),
   email: z.email().optional(),
   phone: phone.optional(),
   address: z.string().trim().min(5).max(500),

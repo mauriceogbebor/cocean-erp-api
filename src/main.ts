@@ -5,7 +5,7 @@ async function main() {
   const env = loadEnv();
   const app = await createApp(env);
   await app.listen(env.PORT);
-  console.log(`Cocean ERP API listening on :${env.PORT}`);
+  console.log(`Qorrix ERP API listening on :${env.PORT}`);
 }
 
 main().catch((e) => {

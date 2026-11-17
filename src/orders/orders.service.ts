@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import type { CreateOrderInput } from "@cocean/contracts";
+import type { CreateOrderInput } from "@qorrix-erp/contracts";
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.js";
 import {
@@ -19,16 +19,16 @@ import { ApprovalHandlers } from "../approvals/approval-handlers.js";
 import { ApprovalsService } from "../approvals/approvals.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
-import { lagosDate } from "../common/dates.js";
+import { businessDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { nextNumber } from "../common/numbering.js";
 import { DB } from "../common/tokens.js";
 import { CustomersService } from "../customers/customers.service.js";
 import { PricingService } from "../pricing/pricing.service.js";
+import { money } from "../common/org.js";
 
 type Status = (typeof salesOrders.$inferSelect)["status"];
-const naira = (n: number) => `₦${n.toLocaleString("en-NG")}`;
-/** Kobo-safe money arithmetic: work in kobo, store naira with 2 decimals. */
+/** Exact money arithmetic: work in minor units, store major units with 2 decimals. */
 const toKobo = (n: number) => Math.round(n * 100);
 const fromKobo = (k: number) => (k / 100).toFixed(2);
 
@@ -83,7 +83,7 @@ export class OrdersService {
           `Delivery site ${badSite} is not an active site of ${c.name}`,
         );
 
-      const pl = await this.pricing.inForce(tx, lagosDate());
+      const pl = await this.pricing.inForce(tx, businessDate());
       if (!pl)
         throw new UnprocessableEntityException(
           "No approved price list is in force today. Orders can't be priced.",
@@ -258,10 +258,10 @@ export class OrdersService {
         {
           kind: "credit_override",
           ref: o.number,
-          title: `${c.name} · ${o.number} on credit, ${naira(num(o.total)!)}`,
+          title: `${c.name} · ${o.number} on credit, ${money(num(o.total)!)}`,
           amount: num(o.total)!,
           reason: check
-            ? `${reason} (limit ${naira(check.limit)}, exposure with this order ${naira(check.exposure)}, ${naira(check.over)} over)`
+            ? `${reason} (limit ${money(check.limit)}, exposure with this order ${money(check.exposure)}, ${money(check.over)} over)`
             : reason,
         },
         user.id,
@@ -302,8 +302,8 @@ export class OrdersService {
       if (short > 0)
         throw new ConflictException(
           c.terms === "prepaid"
-            ? `${c.name} has ${naira(Math.max(0, -pos.exposure))} paid and unused; this order needs ${naira(total)}. ${naira(short)} short.`
-            : `Still ${naira(short)} over ${c.name}'s ${naira(pos.limit)} limit. Record their payment first, or ask for an override.`,
+            ? `${c.name} has ${money(Math.max(0, -pos.exposure))} paid and unused; this order needs ${money(total)}. ${money(short)} short.`
+            : `Still ${money(short)} over ${c.name}'s ${money(pos.limit)} limit. Record their payment first, or ask for an override.`,
         );
       await tx
         .update(salesOrders)

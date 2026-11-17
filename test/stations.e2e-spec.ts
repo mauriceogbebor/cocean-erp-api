@@ -1,43 +1,43 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { INestApplication } from "@nestjs/common";
-import { addDays, lagosDate } from "../src/common/dates.js";
+import { addDays, businessDate } from "../src/common/dates.js";
 import { ADMIN, as, freshDatabase, login, startApp } from "./harness.js";
 
 let app: INestApplication;
 const people = {
   blessing: {
-    email: "blessing@cocean.test",
+    email: "blessing@erp.test",
     name: "Blessing Okoro",
     roles: ["station"],
   },
   other: {
-    email: "ijeoma@cocean.test",
+    email: "ijeoma@erp.test",
     name: "Ijeoma Uche",
     roles: ["station"],
   },
-  obinna: { email: "obinna@cocean.test", name: "Obinna Kalu", roles: ["lpg"] },
+  obinna: { email: "obinna@erp.test", name: "Obinna Kalu", roles: ["lpg"] },
   sales: {
-    email: "tunde@cocean.test",
+    email: "tunde@erp.test",
     name: "Tunde Adeyemi",
     roles: ["sales"],
   },
   finance: {
-    email: "amina@cocean.test",
+    email: "amina@erp.test",
     name: "Amina Bello",
     roles: ["finance"],
   },
   ops: {
-    email: "chinonso@cocean.test",
+    email: "chinonso@erp.test",
     name: "Chinonso Okafor",
     roles: ["operations"],
   },
-  md: { email: "kelechi@cocean.test", name: "Kelechi Amadi", roles: ["md"] },
+  md: { email: "kelechi@erp.test", name: "Kelechi Amadi", roles: ["md"] },
 };
 type Who = keyof typeof people | "admin";
 const PASSWORD = "a-good-long-password";
 const u = {} as Record<Who, ReturnType<typeof as>>;
 const userIds = {} as Record<Who, string>;
-const today = lagosDate();
+const today = businessDate();
 const ids = {
   station: "",
   plant: "",
@@ -357,7 +357,7 @@ describe("LPG", () => {
         .post("/v1/cylinders", {
           serial,
           sizeKg: 12.5,
-          owner: "Cocean",
+          owner: "Northwind",
           testDueOn,
         })
         .expect(201);
@@ -368,7 +368,7 @@ describe("LPG", () => {
       .post("/v1/cylinders", {
         serial: "CYL-0004",
         sizeKg: 13,
-        owner: "Cocean",
+        owner: "Northwind",
         testDueOn: "2028-06-30",
       })
       .expect(400);

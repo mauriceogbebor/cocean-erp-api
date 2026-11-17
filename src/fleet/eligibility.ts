@@ -1,17 +1,13 @@
-import {
-  FLEET_RULES,
-  REQUIRED_DOCS,
-  vehicleDocKinds,
-  type VehicleDocKind,
-} from "@cocean/contracts";
+import type { vehicleKinds } from "@qorrix-erp/contracts";
 import { addDays } from "../common/dates.js";
+import { org } from "../common/org.js";
 
 type Vehicle = {
   status: string;
-  kind: keyof typeof REQUIRED_DOCS;
+  kind: (typeof vehicleKinds)[number];
   holdReason: string | null;
 };
-type Doc = { kind: VehicleDocKind; expiresOn: string };
+type Doc = { kind: string; expiresOn: string };
 type Driver = {
   status: string;
   licenceExpiresOn: string;
@@ -21,7 +17,7 @@ type Driver = {
 
 /** The latest paper of each kind (renewals are new rows). */
 export function latestDocs<T extends Doc & { createdAt: Date }>(docs: T[]) {
-  const out = new Map<VehicleDocKind, T>();
+  const out = new Map<string, T>();
   for (const d of [...docs].sort(
     (a, b) => a.createdAt.getTime() - b.createdAt.getTime(),
   ))
@@ -47,14 +43,20 @@ export function vehicleIssues(
   }
   if (v.holdReason) issues.push(`On hold: ${v.holdReason}`);
   const latest = new Map(docs.map((d) => [d.kind, d]));
-  for (const kind of REQUIRED_DOCS[v.kind]) {
-    const d = latest.get(kind);
-    if (!d) issues.push(`No ${vehicleDocKinds[kind].toLowerCase()} on record`);
+  // Papers the organization requires for this kind of vehicle.
+  for (const doc of org().vehicleDocuments) {
+    if (!doc.requiredFor.includes(v.kind)) continue;
+    const d = latest.get(doc.key);
+    if (!d) issues.push(`No ${inSentence(doc.label)} on record`);
     else if (d.expiresOn < today)
-      issues.push(`${vehicleDocKinds[kind]} expired on ${d.expiresOn}`);
+      issues.push(`${doc.label} expired on ${d.expiresOn}`);
   }
   return issues;
 }
+
+/** "Vehicle registration" → "vehicle registration"; "NMDPRA permit" stays. */
+const inSentence = (label: string) =>
+  /^[A-Z][a-z]/.test(label) ? label[0].toLowerCase() + label.slice(1) : label;
 
 export function driverIssues(d: Driver, today: string) {
   const issues: string[] = [];
@@ -65,7 +67,7 @@ export function driverIssues(d: Driver, today: string) {
   if (d.licenceExpiresOn < today)
     issues.push(`Licence expired on ${d.licenceExpiresOn}`);
   if (!d.inductedOn) issues.push("No HSE induction on record");
-  else if (addDays(d.inductedOn, FLEET_RULES.inductionValidDays) < today)
+  else if (addDays(d.inductedOn, org().fleet.inductionValidDays) < today)
     issues.push(`HSE induction from ${d.inductedOn} has lapsed`);
   return issues;
 }

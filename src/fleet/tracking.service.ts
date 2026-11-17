@@ -5,12 +5,13 @@ import {
   ServiceUnavailableException,
   UnauthorizedException,
 } from "@nestjs/common";
-import { FLEET_RULES, type TrackerPingsInput } from "@cocean/contracts";
+import { type TrackerPingsInput } from "@qorrix-erp/contracts";
 import { inArray, sql } from "drizzle-orm";
 import type { Env } from "../config/env.js";
 import type { Db } from "../db/client.js";
 import { vehiclePositions, vehicles } from "../db/schema.js";
 import { DB, ENV } from "../common/tokens.js";
+import { org } from "../common/org.js";
 
 const same = (a: string, b: string) => {
   const x = Buffer.from(a);
@@ -101,7 +102,7 @@ export class TrackingService {
             }
           : null,
         minutesSinceReport: age,
-        stale: age === null || age > FLEET_RULES.trackerStaleMinutes,
+        stale: age === null || age > org().fleet.trackerStaleMinutes,
         lifting: r.lifting_id
           ? {
               id: r.lifting_id,

@@ -21,7 +21,7 @@ import {
   type CreateVehicleInput,
   type TrackerPingsInput,
   type VehicleDocumentInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import type { z } from "zod";
 import {
   type Actor,
@@ -60,7 +60,8 @@ export class FleetController {
   @Post("vehicles")
   @RequirePermissions("fleet.manage")
   register(
-    @Body(new ZodPipe(createVehicleSchema)) body: CreateVehicleInput,
+    @Body(new ZodPipe(createVehicleSchema, { plate: "plate" }))
+    body: CreateVehicleInput,
     @CurrentUser() user: AuthUser,
     @CurrentActor() actor: Actor,
   ) {
@@ -116,7 +117,8 @@ export class FleetController {
   @Post("drivers")
   @RequirePermissions("fleet.manage")
   createDriver(
-    @Body(new ZodPipe(createDriverSchema)) body: CreateDriverInput,
+    @Body(new ZodPipe(createDriverSchema, { phone: "phone" }))
+    body: CreateDriverInput,
     @CurrentActor() actor: Actor,
   ) {
     return this.fleet.createDriver(body, actor);
@@ -126,7 +128,7 @@ export class FleetController {
   @RequirePermissions("fleet.manage")
   updateDriver(
     @Param("id", Id) id: string,
-    @Body(new ZodPipe(updateDriverSchema))
+    @Body(new ZodPipe(updateDriverSchema, { phone: "phone" }))
     body: z.infer<typeof updateDriverSchema>,
     @CurrentActor() actor: Actor,
   ) {

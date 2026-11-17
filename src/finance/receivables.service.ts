@@ -10,7 +10,7 @@ import {
   AGEING_BUCKETS,
   type AgeingBucket,
   type CreateReceiptInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { and, asc, desc, eq, inArray, lte, ne, type SQL } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.js";
 import {
@@ -27,13 +27,13 @@ import {
 } from "../db/schema.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
-import { addDays, daysBetween, lagosDate } from "../common/dates.js";
+import { addDays, daysBetween, businessDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { nextNumber } from "../common/numbering.js";
 import { DB } from "../common/tokens.js";
 
 const kobo = (n: number | string) => Math.round(Number(n) * 100);
-const naira = (k: number) => (k / 100).toFixed(2);
+const dec = (k: number) => (k / 100).toFixed(2);
 
 const receiptView = (r: typeof receipts.$inferSelect) => ({
   ...r,
@@ -49,9 +49,9 @@ export class ReceivablesService {
 
   // ── Receipts ──────────────────────────────────────────────────────────────
 
-  /** Records money that has reached Cocean's bank. One bank reference, once. */
+  /** Records money that has reached the organization's bank. One bank reference, once. */
   async recordReceipt(input: CreateReceiptInput, user: AuthUser, actor: Actor) {
-    if (input.receivedOn > lagosDate())
+    if (input.receivedOn > businessDate())
       throw new UnprocessableEntityException(
         "A receipt can't be dated in the future",
       );
@@ -81,7 +81,7 @@ export class ReceivablesService {
         .values({
           ...input,
           number,
-          amount: naira(kobo(input.amount)),
+          amount: dec(kobo(input.amount)),
           notes: input.notes ?? null,
           recordedBy: user.id,
         })
@@ -92,7 +92,7 @@ export class ReceivablesService {
         ref: number,
         docId: r.id,
         entryDate: input.receivedOn,
-        amount: naira(-kobo(input.amount)),
+        amount: dec(-kobo(input.amount)),
         createdBy: user.id,
       });
       await this.audit.record(tx, actor, {
@@ -143,7 +143,7 @@ export class ReceivablesService {
         kind: "receipt_reversal",
         ref: r.number,
         docId: r.id,
-        entryDate: lagosDate(),
+        entryDate: businessDate(),
         amount: r.amount,
         createdBy: user.id,
       });
@@ -362,7 +362,7 @@ export class ReceivablesService {
     }));
     const totalK = priced.reduce((a, l) => a + l.grossK, 0);
     const vatK = priced.reduce((a, l) => a + l.vatK, 0);
-    const issuedOn = lagosDate();
+    const issuedOn = businessDate();
     const dueOn = addDays(issuedOn, o.terms === "credit" ? c.creditDays : 0);
     const number = await nextNumber(tx, "INV");
     const [inv] = await tx
@@ -374,9 +374,9 @@ export class ReceivablesService {
         dropId: doc.dropId,
         issuedOn,
         dueOn,
-        subtotal: naira(totalK - vatK),
-        vat: naira(vatK),
-        total: naira(totalK),
+        subtotal: dec(totalK - vatK),
+        vat: dec(vatK),
+        total: dec(totalK),
         createdBy: user.id,
       })
       .returning();
@@ -389,9 +389,9 @@ export class ReceivablesService {
         quantity: l.quantity,
         unit: l.unit,
         unitPrice: l.unitPrice,
-        amount: naira(l.grossK - l.vatK),
+        amount: dec(l.grossK - l.vatK),
         vatRate: String(l.vatRate),
-        vat: naira(l.vatK),
+        vat: dec(l.vatK),
       })),
     );
     await tx.insert(customerLedger).values({
@@ -401,7 +401,7 @@ export class ReceivablesService {
       docId: inv.id,
       entryDate: issuedOn,
       dueOn,
-      amount: naira(totalK),
+      amount: dec(totalK),
       createdBy: user.id,
     });
     await this.audit.record(tx, actor, {
@@ -498,7 +498,7 @@ export class ReceivablesService {
    * due first; what is left of each invoice is aged by days past its due
    * date. Money not yet used against anything is shown as on account.
    */
-  async receivables(asOf = lagosDate()) {
+  async receivables(asOf = businessDate()) {
     const cs = await this.db
       .select()
       .from(customers)

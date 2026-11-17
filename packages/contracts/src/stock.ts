@@ -3,10 +3,7 @@ import { z } from "zod";
 const isoDate = z.iso.date();
 const qty = z.number().positive().max(1e8);
 
-/**
- * Placeholder tolerances until Cocean's operations and HSE teams set them.
- * They live here so the API and the web app apply the same numbers.
- */
+/** Default tolerances; each organization sets its own in its settings. */
 export const STOCK_RULES = {
   /** A dip within this of book stock is booked automatically as a gain or loss. */
   dipTolerancePct: 0.005,

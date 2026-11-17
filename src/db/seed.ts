@@ -1,15 +1,17 @@
 import { pathToFileURL } from "node:url";
 import { hash } from "@node-rs/argon2";
 import {
+  DEFAULT_ORGANIZATION,
   DEFAULT_POLICIES,
   PERMISSIONS,
   ROLES,
   type RoleKey,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { eq, sql } from "drizzle-orm";
 import { createDb, type Db } from "./client.js";
 import {
   approvalPolicies,
+  organization,
   permissions,
   products,
   rolePermissions,
@@ -18,7 +20,7 @@ import {
   users,
 } from "./schema.js";
 
-/** Product reference data. Densities are placeholders until Cocean confirms its source. */
+/** Product reference data. Densities are typical values; each organization confirms its own. */
 const PRODUCTS = [
   {
     code: "AGO",
@@ -38,15 +40,29 @@ const PRODUCTS = [
 ];
 
 /**
- * Brings the reference data in line with @cocean/contracts. Safe to run again:
+ * Brings the reference data in line with @qorrix-erp/contracts. Safe to run again:
  * roles and permissions are upserted, role grants are replaced, and policies
  * and products are only inserted when missing so changes made in the app stay.
  */
 export async function seed(
   db: Db,
   admin?: { email: string; password: string; name?: string },
+  orgName?: string,
 ) {
   await db.transaction(async (tx) => {
+    // A new installation starts on the default settings, under its own name
+    // if one is given. An existing organization's settings are never touched.
+    await tx
+      .insert(organization)
+      .values({
+        id: 1,
+        settings: {
+          ...DEFAULT_ORGANIZATION,
+          ...(orgName ? { name: orgName } : {}),
+        },
+      })
+      .onConflictDoNothing();
+
     for (const [key, description] of Object.entries(PERMISSIONS))
       await tx
         .insert(permissions)
@@ -70,8 +86,8 @@ export async function seed(
           );
     }
 
-    // Bands are added only for kinds that have none yet, so limits Cocean
-    // changes in the app are kept and new kinds still get a starting band.
+    // Bands are added only for kinds that have none yet, so limits an
+    // organization changes in the app are kept and new kinds still get a starting band.
     const have = new Set(
       (
         await tx
@@ -121,7 +137,11 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
   if (password && password.length < 12)
     throw new Error("SEED_ADMIN_PASSWORD must be at least 12 characters");
   const { db, pool } = createDb(url);
-  seed(db, email && password ? { email, password } : undefined)
+  seed(
+    db,
+    email && password ? { email, password } : undefined,
+    process.env.SEED_ORG_NAME,
+  )
     .then(() => console.log("Reference data seeded"))
     .catch((e) => {
       console.error(e);

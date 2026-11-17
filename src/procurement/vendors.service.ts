@@ -8,7 +8,7 @@ import type {
   CreateVendorInput,
   VendorBankInput,
   updateVendorSchema,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { asc, eq } from "drizzle-orm";
 import type { z } from "zod";
 import type { Db, Tx } from "../db/client.js";

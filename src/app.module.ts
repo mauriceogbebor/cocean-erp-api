@@ -27,6 +27,8 @@ import { StationsService } from "./stations/stations.service.js";
 import { HealthController } from "./health/health.controller.js";
 import { MasterDataController } from "./master-data/master-data.controller.js";
 import { MasterDataService } from "./master-data/master-data.service.js";
+import { OrganizationController } from "./organization/organization.controller.js";
+import { OrganizationService } from "./organization/organization.service.js";
 import { OrdersController } from "./orders/orders.controller.js";
 import { OrdersService } from "./orders/orders.service.js";
 import { BillsService } from "./procurement/bills.service.js";
@@ -57,14 +59,15 @@ export class AppModule {
           secret: env.JWT_SECRET,
           signOptions: {
             expiresIn: `${env.ACCESS_TOKEN_MINUTES}m`,
-            issuer: "cocean-erp",
+            issuer: "qorrix-erp",
           },
-          verifyOptions: { issuer: "cocean-erp" },
+          verifyOptions: { issuer: "qorrix-erp" },
         }),
       ],
       controllers: [
         HealthController,
         AuthController,
+        OrganizationController,
         AccessController,
         UsersController,
         AuditController,
@@ -85,6 +88,7 @@ export class AppModule {
         { provide: DB, useValue: db },
         AccessService,
         AuditService,
+        OrganizationService,
         AuthService,
         UsersService,
         MasterDataService,

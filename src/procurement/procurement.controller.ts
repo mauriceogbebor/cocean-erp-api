@@ -27,7 +27,7 @@ import {
   type GoodsReceiptInput,
   type SupplierBillInput,
   type VendorBankInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { z } from "zod";
 import {
   type Actor,
@@ -94,7 +94,14 @@ export class ProcurementController {
   @Post("vendors")
   @RequirePermissions("vendors.manage")
   createVendor(
-    @Body(new ZodPipe(createVendorSchema)) body: CreateVendorInput,
+    @Body(
+      new ZodPipe(createVendorSchema, {
+        phone: "phone",
+        tin: "taxId",
+        "bank.accountNumber": "bankAccount",
+      }),
+    )
+    body: CreateVendorInput,
     @CurrentUser() user: AuthUser,
     @CurrentActor() actor: Actor,
   ) {
@@ -116,7 +123,8 @@ export class ProcurementController {
   @RequirePermissions("vendors.manage", "approvals.request")
   bank(
     @Param("id", Id) id: string,
-    @Body(new ZodPipe(vendorBankSchema)) body: VendorBankInput,
+    @Body(new ZodPipe(vendorBankSchema, { accountNumber: "bankAccount" }))
+    body: VendorBankInput,
     @CurrentUser() user: AuthUser,
     @CurrentActor() actor: Actor,
   ) {

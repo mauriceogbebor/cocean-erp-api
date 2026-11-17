@@ -9,7 +9,7 @@ import type {
   createProductSchema,
   updateProductSchema,
   updateSiteSchema,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { asc, eq } from "drizzle-orm";
 import type { z } from "zod";
 import type { Db } from "../db/client.js";

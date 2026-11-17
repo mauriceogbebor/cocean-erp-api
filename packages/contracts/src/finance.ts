@@ -2,7 +2,7 @@ import { z } from "zod";
 
 const isoDate = z.iso.date();
 
-/** Money received from a customer, as it appears on Cocean's bank statement. */
+/** Money received from a customer, as it appears on the organization's bank statement. */
 export const createReceiptSchema = z.object({
   customerId: z.uuid(),
   amount: z.number().positive().max(1e14),

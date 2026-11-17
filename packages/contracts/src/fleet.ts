@@ -4,16 +4,15 @@ const isoDate = z.iso.date();
 const phone = z
   .string()
   .trim()
-  .regex(
-    /^(\+234|0)[789][01]\d{8}$/,
-    "Enter a Nigerian number, like 08031234567",
-  );
+  .regex(/^\+?[\d ()-]{7,20}$/, "Enter a phone number");
+/** Checked against the organization's plate format after this. */
 export const plateSchema = z
   .string()
   .trim()
   .toUpperCase()
-  .regex(/^[A-Z]{3}-?\d{3}-?[A-Z]{2}$/, "Plates look like RIV-430-BN")
-  .transform((p) => p.replace(/^([A-Z]{3})-?(\d{3})-?([A-Z]{2})$/, "$1-$2-$3"));
+  .regex(/^[A-Z0-9][A-Z0-9 -]{1,14}$/, "Enter the number plate")
+  // "riv 430 bn" and "RIV-430-BN" are the same plate.
+  .transform((p) => p.replace(/[\s-]+/g, "-"));
 
 export const vehicleKinds = [
   "tanker",
@@ -21,41 +20,7 @@ export const vehicleKinds = [
   "flatbed",
   "other",
 ] as const;
-export const vehicleDocKinds = {
-  registration: "Vehicle registration",
-  roadworthiness: "Roadworthiness certificate",
-  insurance: "Insurance",
-  nmdpra_permit: "NMDPRA permit to carry petroleum products",
-  calibration: "Tank calibration certificate",
-} as const;
-export type VehicleDocKind = keyof typeof vehicleDocKinds;
-
-/**
- * Papers a vehicle must hold, in date, before it can be dispatched.
- * Placeholders until Cocean's fleet and HSE teams confirm the list.
- */
-export const REQUIRED_DOCS: Record<
-  (typeof vehicleKinds)[number],
-  VehicleDocKind[]
-> = {
-  tanker: [
-    "registration",
-    "roadworthiness",
-    "insurance",
-    "nmdpra_permit",
-    "calibration",
-  ],
-  lpg_bridger: [
-    "registration",
-    "roadworthiness",
-    "insurance",
-    "nmdpra_permit",
-    "calibration",
-  ],
-  flatbed: ["registration", "roadworthiness", "insurance"],
-  other: ["registration", "roadworthiness", "insurance"],
-};
-
+/** Defaults; each organization sets its own in its settings. */
 export const FLEET_RULES = {
   /** A driver's HSE induction is valid this many days. */
   inductionValidDays: 365,
@@ -91,9 +56,11 @@ export const createVehicleSchema = z
 export type CreateVehicleInput = z.infer<typeof createVehicleSchema>;
 
 export const vehicleDocumentSchema = z.object({
-  kind: z.enum(
-    Object.keys(vehicleDocKinds) as [VehicleDocKind, ...VehicleDocKind[]],
-  ),
+  /** One of the organization's vehicle document keys. */
+  kind: z
+    .string()
+    .trim()
+    .regex(/^[a-z][a-z0-9_]{1,39}$/),
   number: z.string().trim().min(3).max(60),
   issuer: z.string().trim().min(2).max(120),
   expiresOn: isoDate,
@@ -107,7 +74,7 @@ export const createDriverSchema = z.object({
   licenceExpiresOn: isoDate,
   /** Date of the last HSE induction. Without one the driver can't be dispatched. */
   inductedOn: isoDate.optional(),
-  /** The transporter they drive for; blank for Cocean's own drivers. */
+  /** The transporter they drive for; blank for the organization's own drivers. */
   employer: z.string().trim().max(200).optional(),
 });
 export type CreateDriverInput = z.infer<typeof createDriverSchema>;

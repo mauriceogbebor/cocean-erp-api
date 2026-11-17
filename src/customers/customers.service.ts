@@ -9,7 +9,7 @@ import type {
   CreditTermsInput,
   CustomerSiteInput,
   updateCustomerSchema,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { z } from "zod";
 import type { Db, Tx } from "../db/client.js";
@@ -23,9 +23,10 @@ import { ApprovalHandlers } from "../approvals/approval-handlers.js";
 import { ApprovalsService } from "../approvals/approvals.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
-import { lagosDate } from "../common/dates.js";
+import { businessDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { DB } from "../common/tokens.js";
+import { money } from "../common/org.js";
 
 type Customer = typeof customers.$inferSelect;
 type TermsPayload = {
@@ -42,7 +43,6 @@ const view = (c: Customer) => ({
 });
 
 const round2 = (n: number) => Math.round(n * 100) / 100;
-const naira = (n: number) => `₦${n.toLocaleString("en-NG")}`;
 
 @Injectable()
 export class CustomersService {
@@ -135,8 +135,8 @@ export class CustomersService {
           customerId: c.id,
           kind: "opening",
           ref: "OPENING",
-          entryDate: lagosDate(),
-          dueOn: lagosDate(),
+          entryDate: businessDate(),
+          dueOn: businessDate(),
           amount: String(openingBalance),
           createdBy: user.id,
         });
@@ -209,14 +209,14 @@ export class CustomersService {
     };
     const summary =
       payload.terms === "credit"
-        ? `credit, ${naira(payload.creditLimit)} limit, ${payload.creditDays} days`
+        ? `credit, ${money(payload.creditLimit)} limit, ${payload.creditDays} days`
         : "prepaid";
     return this.approvals.createIn(
       tx,
       {
         kind: "credit_limit",
         ref: c.code,
-        title: `${c.name}: ${summary} (now ${c.terms === "credit" ? `${naira(num(c.creditLimit)!)} limit` : "prepaid"})`,
+        title: `${c.name}: ${summary} (now ${c.terms === "credit" ? `${money(num(c.creditLimit)!)} limit` : "prepaid"})`,
         amount: payload.creditLimit,
         reason: input.reason,
       },

@@ -1,9 +1,9 @@
 import type { Permission } from "./permissions";
 
 /**
- * Starting role catalogue, matching the people in the prototype. Cocean
- * confirms the real roles, scopes and segregation rules in the first weeks;
- * roles live in the database, so changing them needs no code change.
+ * Starting role catalogue for a petroleum distributor. Each organization
+ * adjusts roles, scopes and segregation rules when it goes live; roles live
+ * in the database, so changing them needs no code change.
  */
 export type RoleDef = {
   name: string;
@@ -35,6 +35,7 @@ export const ROLES = {
     permissions: [
       "users.read",
       "users.manage",
+      "settings.manage",
       "roles.read",
       "audit.read",
       "sites.read",

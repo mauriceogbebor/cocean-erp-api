@@ -25,7 +25,7 @@ import {
   type CreatePumpInput,
   type FillInput,
   type StationReceiptInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { z } from "zod";
 import {
   type Actor,

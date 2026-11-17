@@ -21,6 +21,18 @@ const created = () =>
 const updated = () =>
   timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
 
+// ── The organization ────────────────────────────────────────────────────────
+/**
+ * One installation serves one organization: a single row (id 1) holding its
+ * name, logo, formats, lists and tolerances (OrganizationSettings).
+ */
+export const organization = pgTable("organization", {
+  id: integer("id").primaryKey().default(1),
+  settings: jsonb("settings").notNull(),
+  updatedBy: uuid("updated_by"),
+  updatedAt: updated(),
+});
+
 // ── Identity and access ─────────────────────────────────────────────────────
 export const userStatus = pgEnum("user_status", ["active", "disabled"]);
 
@@ -153,7 +165,7 @@ export const products = pgTable("products", {
   name: text("name").notNull(),
   unit: text("unit").notNull(),
   density: numeric("density", { precision: 6, scale: 4 }),
-  /** VAT charged on sale, e.g. 0.075. Zero until Cocean's tax adviser confirms each product. */
+  /** VAT charged on sale, e.g. 0.075. Zero until the organization's tax adviser confirms each product. */
   vatRate: numeric("vat_rate", { precision: 5, scale: 4 })
     .notNull()
     .default("0"),
@@ -484,7 +496,7 @@ export const ledgerKind = pgEnum("ledger_kind", [
 ]);
 
 /**
- * Every naira a customer owes or has paid, as signed entries: invoices add,
+ * Every amount a customer owes or has paid, as signed entries: invoices add,
  * receipts subtract. The balance is the sum. Append-only (trigger), so a
  * mistake is corrected by a new entry, never by changing an old one.
  */
@@ -934,14 +946,6 @@ export const vehicles = pgTable(
   ],
 );
 
-export const vehicleDocKind = pgEnum("vehicle_doc_kind", [
-  "registration",
-  "roadworthiness",
-  "insurance",
-  "nmdpra_permit",
-  "calibration",
-]);
-
 /** Papers, append-only by use: a renewal is a new row; the latest of each kind counts. */
 export const vehicleDocuments = pgTable(
   "vehicle_documents",
@@ -950,7 +954,8 @@ export const vehicleDocuments = pgTable(
     vehicleId: uuid("vehicle_id")
       .notNull()
       .references(() => vehicles.id),
-    kind: vehicleDocKind("kind").notNull(),
+    /** A key from the organization's vehicle document list. */
+    kind: text("kind").notNull(),
     number: text("number").notNull(),
     issuer: text("issuer").notNull(),
     expiresOn: date("expires_on").notNull(),

@@ -5,13 +5,13 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import type { CreateCylinderInput, FillInput } from "@cocean/contracts";
+import type { CreateCylinderInput, FillInput } from "@qorrix-erp/contracts";
 import { and, asc, desc, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { cylinders, fills, sites } from "../db/schema.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
-import { lagosDate } from "../common/dates.js";
+import { businessDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { DB } from "../common/tokens.js";
 import { PricingService } from "../pricing/pricing.service.js";
@@ -31,7 +31,7 @@ export class LpgService {
   ) {}
 
   async listCylinders() {
-    const today = lagosDate();
+    const today = businessDate();
     return (
       await this.db.select().from(cylinders).orderBy(asc(cylinders.serial))
     ).map((c) => ({
@@ -124,7 +124,7 @@ export class LpgService {
         throw new UnprocessableEntityException(
           `${c.serial} is condemned (${c.condemnedReason}) and can't be filled`,
         );
-      if (c.testDueOn < lagosDate())
+      if (c.testDueOn < businessDate())
         throw new UnprocessableEntityException(
           `${c.serial}'s pressure test was due on ${c.testDueOn}. It can't be filled until it is retested.`,
         );
@@ -132,7 +132,7 @@ export class LpgService {
         throw new UnprocessableEntityException(
           `${c.serial} is a ${num(c.sizeKg)} kg cylinder; ${input.kg} kg won't fit`,
         );
-      const pl = await this.pricing.inForce(tx, lagosDate());
+      const pl = await this.pricing.inForce(tx, businessDate());
       const price = pl?.lines.find((l) => l.productCode === "LPG")?.price;
       if (price === undefined)
         throw new UnprocessableEntityException(

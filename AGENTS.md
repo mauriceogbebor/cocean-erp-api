@@ -1,8 +1,8 @@
-# Cocean ERP API: rules for contributors and agents
+# Qorrix ERP API: rules for contributors and agents
 
-Qorrix Technologies Limited builds this for Cocean Nigeria Integrated Limited.
-Read `docs/architecture.md` first. Never commit credentials, `.env` files or
-live Cocean data.
+Qorrix Technologies Limited builds Qorrix ERP for petroleum distributors. Each
+installation serves one organization. Read `docs/architecture.md` first.
+Never commit credentials, `.env` files or any customer's data.
 
 - NestJS 12 is ESM-only: this package is `"type": "module"`, and relative
   imports end in `.js`.
@@ -24,5 +24,11 @@ live Cocean data.
   that has run.
 - Money is `numeric(18,2)`; never floats in the database. Times are UTC.
 - `pnpm test` must pass. Add an e2e test for each rule you add.
-- Approval limits, roles, tolerances and tax rates are placeholders until
-  Cocean confirms them; keep them in data, not code.
+- Nothing about a particular organization goes in code. Its name, currency,
+  time zone, formats, lists, truck papers and tolerances are organization
+  settings: read them with `org()` (`src/common/org.ts`), format money with
+  `money()`, dates with `businessDate()`, and check IDs by naming the field's
+  format in `ZodPipe` (`new ZodPipe(schema, { phone: "phone" })`). Contract
+  schemas stay loose; the API applies the organization's format. A new
+  setting needs a default in `DEFAULT_ORGANIZATION` (Nigerian values).
+- Approval limits and roles are data too (seeded, then changed in the app).

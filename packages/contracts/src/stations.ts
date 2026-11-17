@@ -4,11 +4,11 @@ const isoDate = z.iso.date();
 const money = z.number().min(0).max(1e12);
 
 /**
- * Placeholders until Cocean's retail and finance teams set them. Takings
- * within this of what the meters say count as balanced.
+ * Defaults; each organization sets its own in its settings. Takings within
+ * this of what the meters say count as balanced.
  */
 export const STATION_RULES = {
-  cashToleranceNaira: 5_000,
+  cashToleranceAmount: 5_000,
   cashTolerancePct: 0.002,
 } as const;
 
@@ -80,7 +80,7 @@ export const createCylinderSchema = z.object({
       (n) => (cylinderSizes as readonly number[]).includes(n),
       "Sizes are 3, 5, 6, 12.5, 25 or 50 kg",
     ),
-  /** "Cocean", or the customer who owns it. */
+  /** The organization, or the customer who owns it. */
   owner: z.string().trim().min(2).max(120),
   /** When its next pressure test is due. Past this it can't be filled. */
   testDueOn: isoDate,

@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import type { PriceListInput } from "@cocean/contracts";
+import type { PriceListInput } from "@qorrix-erp/contracts";
 import { and, asc, desc, eq, inArray, lte } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.js";
 import { priceListLines, priceLists, products } from "../db/schema.js";
@@ -13,9 +13,10 @@ import { ApprovalHandlers } from "../approvals/approval-handlers.js";
 import { ApprovalsService } from "../approvals/approvals.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
-import { lagosDate } from "../common/dates.js";
+import { businessDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { DB } from "../common/tokens.js";
+import { org } from "../common/org.js";
 
 type Lines = PriceListInput["lines"];
 
@@ -63,7 +64,7 @@ export class PricingService {
    * The price list in force on a date: the approved list with the latest
    * start date on or before it.
    */
-  async inForce(exec: Db | Tx = this.db, onDate = lagosDate()) {
+  async inForce(exec: Db | Tx = this.db, onDate = businessDate()) {
     const [pl] = await exec
       .select()
       .from(priceLists)
@@ -165,7 +166,10 @@ export class PricingService {
         .set({ status: "pending", updatedAt: new Date() })
         .where(eq(priceLists.id, id));
       const prices = pl.lines
-        .map((l) => `${l.productCode} ₦${l.price.toLocaleString("en-NG")}`)
+        .map(
+          (l) =>
+            `${l.productCode} ${org().currency.symbol}${l.price.toLocaleString(org().locale)}`,
+        )
         .join(", ");
       const request = await this.approvals.createIn(
         tx,

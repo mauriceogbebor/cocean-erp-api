@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { INestApplication } from "@nestjs/common";
 import { Client } from "pg";
-import { addDays, lagosDate } from "../src/common/dates.js";
+import { addDays, businessDate } from "../src/common/dates.js";
 import {
   ADMIN,
   as,
@@ -14,27 +14,27 @@ import {
 let app: INestApplication;
 const people = {
   sales: {
-    email: "tunde@cocean.test",
+    email: "tunde@erp.test",
     name: "Tunde Adeyemi",
     roles: ["sales"],
   },
   finance: {
-    email: "amina@cocean.test",
+    email: "amina@erp.test",
     name: "Amina Bello",
     roles: ["finance"],
   },
   finance2: {
-    email: "ngozi@cocean.test",
+    email: "ngozi@erp.test",
     name: "Ngozi Eze",
     roles: ["finance"],
   },
-  md: { email: "kelechi@cocean.test", name: "Kelechi Amadi", roles: ["md"] },
-  depot: { email: "bayo@cocean.test", name: "Bayo Lawal", roles: ["depot"] },
+  md: { email: "kelechi@erp.test", name: "Kelechi Amadi", roles: ["md"] },
+  depot: { email: "bayo@erp.test", name: "Bayo Lawal", roles: ["depot"] },
 };
 type Who = keyof typeof people | "admin";
 const PASSWORD = "a-good-long-password";
 const u = {} as Record<Who, ReturnType<typeof as>>;
-const today = lagosDate();
+const today = businessDate();
 const ids = {
   riverside: "",
   rSite: "",

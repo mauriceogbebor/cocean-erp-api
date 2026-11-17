@@ -9,7 +9,7 @@ import {
 import type {
   CreatePurchaseOrderInput,
   GoodsReceiptInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.js";
 import {
@@ -31,11 +31,12 @@ import {
 import { ApprovalsService } from "../approvals/approvals.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
-import { lagosDate } from "../common/dates.js";
+import { businessDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { nextNumber } from "../common/numbering.js";
 import { DB } from "../common/tokens.js";
-import { kobo, naira, priceLine, toNaira } from "./money.js";
+import { kobo, priceLine, toMajor } from "./money.js";
+import { money as amount, org } from "../common/org.js";
 
 type Status = (typeof purchaseOrders.$inferSelect)["status"];
 type Lines = CreatePurchaseOrderInput["lines"];
@@ -202,7 +203,7 @@ export class PurchaseOrdersService {
       const what = full.lines
         .map(
           (l) =>
-            `${l.quantity.toLocaleString("en-NG")} ${l.unit} ${l.description} at ${naira(l.unitPrice)}`,
+            `${l.quantity.toLocaleString(org().locale)} ${l.unit} ${l.description} at ${amount(l.unitPrice)}`,
         )
         .join("; ");
       const approval = await this.approvals.createIn(
@@ -210,7 +211,7 @@ export class PurchaseOrdersService {
         {
           kind: "purchase_order",
           ref: po.number,
-          title: `${v.name} · ${po.number}, ${naira(full.total)}`,
+          title: `${v.name} · ${po.number}, ${amount(full.total)}`,
           amount: full.total,
           reason: `${po.justification} — ${what}${po.quoteRef ? ` (quote ${po.quoteRef})` : ""}`,
         },
@@ -268,7 +269,7 @@ export class PurchaseOrdersService {
     user: AuthUser,
     actor: Actor,
   ) {
-    if (input.receivedOn > lagosDate())
+    if (input.receivedOn > businessDate())
       throw new UnprocessableEntityException(
         "Goods can't be received in the future",
       );
@@ -424,7 +425,8 @@ export class PurchaseOrdersService {
     let sub = 0;
     let vat = 0;
     const rows = lines.map((l, i) => {
-      const p = priceLine(l.quantity, l.unitPrice, l.vatRate);
+      const vatRate = l.vatRate ?? org().defaultVatRate;
+      const p = priceLine(l.quantity, l.unitPrice, vatRate);
       sub += p.amount;
       vat += p.vat;
       return {
@@ -434,19 +436,19 @@ export class PurchaseOrdersService {
         description: l.description,
         quantity: String(l.quantity),
         unit: l.unit,
-        unitPrice: toNaira(kobo(l.unitPrice)),
-        vatRate: String(l.vatRate),
-        amount: toNaira(p.amount),
-        vat: toNaira(p.vat),
+        unitPrice: toMajor(kobo(l.unitPrice)),
+        vatRate: String(vatRate),
+        amount: toMajor(p.amount),
+        vat: toMajor(p.vat),
       };
     });
     await tx.insert(purchaseOrderLines).values(rows);
     await tx
       .update(purchaseOrders)
       .set({
-        subtotal: toNaira(sub),
-        vat: toNaira(vat),
-        total: toNaira(sub + vat),
+        subtotal: toMajor(sub),
+        vat: toMajor(vat),
+        total: toMajor(sub + vat),
         updatedAt: new Date(),
       })
       .where(eq(purchaseOrders.id, poId));

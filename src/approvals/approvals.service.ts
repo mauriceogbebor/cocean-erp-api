@@ -10,7 +10,7 @@ import type {
   ApprovalKind,
   CreateApprovalInput,
   DecideApprovalInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import {
   and,
   asc,

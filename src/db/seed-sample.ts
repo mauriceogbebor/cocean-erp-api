@@ -1,8 +1,8 @@
 import { pathToFileURL } from "node:url";
 import { hash } from "@node-rs/argon2";
-import type { RoleKey } from "@cocean/contracts";
+import { DEFAULT_ORGANIZATION, type RoleKey } from "@qorrix-erp/contracts";
 import { eq } from "drizzle-orm";
-import { addDays, lagosDate } from "../common/dates.js";
+import { addDays, businessDate } from "../common/dates.js";
 import { createDb, type Db } from "./client.js";
 import { seed } from "./seed.js";
 import {
@@ -10,6 +10,7 @@ import {
   customerSites,
   customers,
   cylinders,
+  organization,
   drivers,
   priceListLines,
   priceLists,
@@ -26,11 +27,19 @@ import {
 } from "./schema.js";
 
 /**
- * Sample people and records (customers, prices, tanks with stock, suppliers, trucks and drivers, a station and an LPG plant) for development and Cocean's trial runs: the
- * same names as the clickable demo, so both tell one story. Records are
+ * Sample people and records (customers, prices, tanks with stock, suppliers,
+ * trucks and drivers, a station and an LPG plant) for development, demos and
+ * trial runs. The organization is Northwind Petroleum, a made-up Nigerian
+ * distributor; the people have the same names as the clickable demo, so both
+ * tell one story. Records are
  * inserted directly (already approved), not through the approval flow.
  * Refuses to run in production, and does nothing if it has run before.
  */
+export const SAMPLE_ORGANIZATION = {
+  name: "Northwind Petroleum",
+  legalName: "Northwind Petroleum Limited (sample data)",
+};
+
 export const SAMPLE_PEOPLE: {
   key: string;
   email: string;
@@ -39,75 +48,81 @@ export const SAMPLE_PEOPLE: {
 }[] = [
   {
     key: "md",
-    email: "kelechi.amadi@cocean.dev",
+    email: "kelechi.amadi@northwind.example",
     name: "Kelechi Amadi",
     roles: ["md"],
   },
   {
     key: "executive",
-    email: "adaeze.nwosu@cocean.dev",
+    email: "adaeze.nwosu@northwind.example",
     name: "Adaeze Nwosu",
     roles: ["executive"],
   },
   {
     key: "sales",
-    email: "tunde.adeyemi@cocean.dev",
+    email: "tunde.adeyemi@northwind.example",
     name: "Tunde Adeyemi",
     roles: ["sales"],
   },
   {
     key: "finance",
-    email: "amina.bello@cocean.dev",
+    email: "amina.bello@northwind.example",
     name: "Amina Bello",
     roles: ["finance"],
   },
   {
     key: "finance2",
-    email: "chidinma.ude@cocean.dev",
+    email: "chidinma.ude@northwind.example",
     name: "Chidinma Ude",
     roles: ["finance"],
   },
   {
     key: "procurement",
-    email: "ifeoma.nnaji@cocean.dev",
+    email: "ifeoma.nnaji@northwind.example",
     name: "Ifeoma Nnaji",
     roles: ["procurement"],
   },
   {
     key: "operations",
-    email: "chinonso.okafor@cocean.dev",
+    email: "chinonso.okafor@northwind.example",
     name: "Chinonso Okafor",
     roles: ["operations"],
   },
   {
     key: "depot",
-    email: "sani.garba@cocean.dev",
+    email: "sani.garba@northwind.example",
     name: "Sani Garba",
     roles: ["depot"],
   },
   {
     key: "security",
-    email: "musa.abdullahi@cocean.dev",
+    email: "musa.abdullahi@northwind.example",
     name: "Musa Abdullahi",
     roles: ["security"],
   },
   {
     key: "fleet",
-    email: "emeka.obi@cocean.dev",
+    email: "emeka.obi@northwind.example",
     name: "Emeka Obi",
     roles: ["fleet"],
   },
   {
     key: "station",
-    email: "blessing.okoro@cocean.dev",
+    email: "blessing.okoro@northwind.example",
     name: "Blessing Okoro",
     roles: ["station"],
   },
   {
     key: "lpg",
-    email: "obinna.kalu@cocean.dev",
+    email: "obinna.kalu@northwind.example",
     name: "Obinna Kalu",
     roles: ["lpg"],
+  },
+  {
+    key: "admin",
+    email: "ifeanyi.okeke@northwind.example",
+    name: "Ifeanyi Okeke",
+    roles: ["admin"],
   },
 ];
 
@@ -123,6 +138,18 @@ export async function seedSample(
       .from(customers)
       .where(eq(customers.code, "CUS-107"));
     if (done) return;
+
+    // Name the sample organization; everything else keeps the defaults.
+    await tx
+      .insert(organization)
+      .values({
+        id: 1,
+        settings: { ...DEFAULT_ORGANIZATION, ...SAMPLE_ORGANIZATION },
+      })
+      .onConflictDoUpdate({
+        target: organization.id,
+        set: { settings: { ...DEFAULT_ORGANIZATION, ...SAMPLE_ORGANIZATION } },
+      });
 
     const passwordHash = await hash(password);
     const ids: Record<string, string> = {};
@@ -161,7 +188,7 @@ export async function seedSample(
       ])
       .onConflictDoNothing();
 
-    const today = lagosDate();
+    const today = businessDate();
     const [riverside] = await tx
       .insert(customers)
       .values({
@@ -321,13 +348,13 @@ export async function seedSample(
       {
         serial: "CYL-12-0001",
         sizeKg: "12.5",
-        owner: "Cocean",
+        owner: "Northwind",
         testDueOn: addDays(today, 400),
       },
       {
         serial: "CYL-12-0002",
         sizeKg: "12.5",
-        owner: "Cocean",
+        owner: "Northwind",
         testDueOn: addDays(today, 200),
       },
       // Past its pressure test: the plant must refuse to fill it.
@@ -340,7 +367,7 @@ export async function seedSample(
       {
         serial: "CYL-06-0090",
         sizeKg: "6",
-        owner: "Cocean",
+        owner: "Northwind",
         testDueOn: addDays(today, 500),
       },
     ]);

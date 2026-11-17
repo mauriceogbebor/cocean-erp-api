@@ -13,7 +13,7 @@ import {
   setRolesSchema,
   type CreateUserInput,
   type RoleKey,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { z } from "zod";
 import {
   type Actor,

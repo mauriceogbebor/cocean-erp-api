@@ -9,7 +9,7 @@ import {
   BILL_TOTAL_TOLERANCE,
   type BillPaidInput,
   type SupplierBillInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import {
   and,
   asc,
@@ -35,11 +35,12 @@ import {
 import { ApprovalsService } from "../approvals/approvals.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
-import { lagosDate } from "../common/dates.js";
+import { businessDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { nextNumber } from "../common/numbering.js";
 import { DB } from "../common/tokens.js";
-import { kobo, naira, priceLine, toNaira } from "./money.js";
+import { kobo, priceLine, toMajor } from "./money.js";
+import { money } from "../common/org.js";
 
 type Bill = typeof supplierBills.$inferSelect;
 type Status = Bill["status"];
@@ -126,7 +127,7 @@ export class BillsService {
    * with the reasons, and can't be paid.
    */
   async create(input: SupplierBillInput, user: AuthUser, actor: Actor) {
-    if (input.invoiceDate > lagosDate())
+    if (input.invoiceDate > businessDate())
       throw new UnprocessableEntityException(
         "An invoice can't be dated in the future",
       );
@@ -186,7 +187,7 @@ export class BillsService {
           );
         if (kobo(l.unitPrice) !== kobo(pl.unitPrice))
           exceptions.push(
-            `Line ${pl.lineNo} (${pl.description}): price ${naira(l.unitPrice)}, the order says ${naira(Number(pl.unitPrice))}`,
+            `Line ${pl.lineNo} (${pl.description}): price ${money(l.unitPrice)}, the order says ${money(Number(pl.unitPrice))}`,
           );
         const p = priceLine(l.quantity, l.unitPrice, Number(pl.vatRate));
         sub += p.amount;
@@ -199,7 +200,7 @@ export class BillsService {
         BILL_TOTAL_TOLERANCE * 100
       )
         exceptions.push(
-          `The invoice total ${naira(input.statedTotal)} doesn't agree with its lines plus VAT, ${naira(totalK / 100)}`,
+          `The invoice total ${money(input.statedTotal)} doesn't agree with its lines plus VAT, ${money(totalK / 100)}`,
         );
       const status: Status = exceptions.length ? "exception" : "matched";
 
@@ -212,10 +213,10 @@ export class BillsService {
           poId: po.id,
           vendorInvoiceNo: input.vendorInvoiceNo,
           invoiceDate: input.invoiceDate,
-          statedTotal: toNaira(kobo(input.statedTotal)),
-          subtotal: toNaira(sub),
-          vat: toNaira(vat),
-          total: toNaira(totalK),
+          statedTotal: toMajor(kobo(input.statedTotal)),
+          subtotal: toMajor(sub),
+          vat: toMajor(vat),
+          total: toMajor(totalK),
           status,
           exceptions,
           recordedBy: user.id,
@@ -226,9 +227,9 @@ export class BillsService {
           billId: b.id,
           poLineId: pl.id,
           quantity: String(l.quantity),
-          unitPrice: toNaira(kobo(l.unitPrice)),
-          amount: toNaira(p.amount),
-          vat: toNaira(p.vat),
+          unitPrice: toMajor(kobo(l.unitPrice)),
+          amount: toMajor(p.amount),
+          vat: toMajor(p.vat),
         })),
       );
       if (status === "matched")
@@ -328,7 +329,7 @@ export class BillsService {
         {
           kind: "supplier_payment",
           ref: b.number,
-          title: `${v.name} · invoice ${b.vendorInvoiceNo} on ${po.number}, ${naira(total)}`,
+          title: `${v.name} · invoice ${b.vendorInvoiceNo} on ${po.number}, ${money(total)}`,
           amount: total,
           reason: `Matched to ${po.number} and the goods received: quantities and prices agree. Pay to ${payTo.bankName} ${payTo.accountNumber}, ${payTo.accountName}.`,
         },
@@ -361,7 +362,7 @@ export class BillsService {
     user: AuthUser,
     actor: Actor,
   ) {
-    if (input.paidOn > lagosDate())
+    if (input.paidOn > businessDate())
       throw new UnprocessableEntityException(
         "A payment can't be dated in the future",
       );
@@ -420,7 +421,7 @@ export class BillsService {
     return this.get(id);
   }
 
-  /** What Cocean owes each supplier, by stage. */
+  /** What the organization owes each supplier, by stage. */
   async payables() {
     const rows = await this.db
       .select({

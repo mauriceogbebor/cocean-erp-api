@@ -2,7 +2,7 @@ import { createHash, randomBytes } from "node:crypto";
 import { Inject, Injectable, UnauthorizedException } from "@nestjs/common";
 import { JwtService } from "@nestjs/jwt";
 import { hash, verify } from "@node-rs/argon2";
-import type { LoginInput } from "@cocean/contracts";
+import type { LoginInput } from "@qorrix-erp/contracts";
 import { and, eq, isNull, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import { sessions, users } from "../db/schema.js";

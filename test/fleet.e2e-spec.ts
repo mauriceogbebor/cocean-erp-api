@@ -2,7 +2,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { INestApplication } from "@nestjs/common";
 import { Client } from "pg";
 import request from "supertest";
-import { addDays, lagosDate } from "../src/common/dates.js";
+import { addDays, businessDate } from "../src/common/dates.js";
 import {
   ADMIN,
   as,
@@ -17,31 +17,31 @@ import {
 
 let app: INestApplication;
 const people = {
-  fleet: { email: "emeka@cocean.test", name: "Emeka Obi", roles: ["fleet"] },
+  fleet: { email: "emeka@erp.test", name: "Emeka Obi", roles: ["fleet"] },
   exec: {
-    email: "adaeze@cocean.test",
+    email: "adaeze@erp.test",
     name: "Adaeze Nwosu",
     roles: ["executive"],
   },
   sales: {
-    email: "tunde@cocean.test",
+    email: "tunde@erp.test",
     name: "Tunde Adeyemi",
     roles: ["sales"],
   },
   finance: {
-    email: "amina@cocean.test",
+    email: "amina@erp.test",
     name: "Amina Bello",
     roles: ["finance"],
   },
-  md: { email: "kelechi@cocean.test", name: "Kelechi Amadi", roles: ["md"] },
+  md: { email: "kelechi@erp.test", name: "Kelechi Amadi", roles: ["md"] },
   ops: {
-    email: "chinonso@cocean.test",
+    email: "chinonso@erp.test",
     name: "Chinonso Okafor",
     roles: ["operations"],
   },
-  depot: { email: "sani@cocean.test", name: "Sani Garba", roles: ["depot"] },
+  depot: { email: "sani@erp.test", name: "Sani Garba", roles: ["depot"] },
   security: {
-    email: "musa@cocean.test",
+    email: "musa@erp.test",
     name: "Musa Abdullahi",
     roles: ["security"],
   },
@@ -49,7 +49,7 @@ const people = {
 type Who = keyof typeof people | "admin";
 const PASSWORD = "a-good-long-password";
 const u = {} as Record<Who, ReturnType<typeof as>>;
-const today = lagosDate();
+const today = businessDate();
 const ids = {
   depot: "",
   tank: "",
@@ -185,7 +185,7 @@ afterAll(() => app?.close());
 describe("vehicles into service", () => {
   it("registers a tanker; compartments must add up and plates are unique", async () => {
     const truck = {
-      plate: "riv 430 bn".replace(/ /g, ""),
+      plate: "riv 430 bn",
       kind: "tanker",
       capacity: 33_000,
       ownership: "owned",

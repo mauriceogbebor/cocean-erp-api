@@ -21,9 +21,9 @@ export const approvalKinds = Object.keys(APPROVAL_KINDS) as [
 ];
 
 /**
- * Starting authority bands, in naira. Placeholders from the prototype: Cocean
- * sets the real limits, and they are stored in the database so they can be
- * changed without a release. A band applies when min <= amount < max.
+ * Starting authority bands, in the organization's currency. Each
+ * organization sets its own limits; they are stored in the database so they
+ * can be changed without a release. A band applies when min <= amount < max.
  */
 export type PolicyDef = {
   kind: ApprovalKind;

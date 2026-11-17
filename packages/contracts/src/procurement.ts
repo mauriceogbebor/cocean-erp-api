@@ -4,18 +4,13 @@ const isoDate = z.iso.date();
 const phone = z
   .string()
   .trim()
-  .regex(
-    /^(\+234|0)[789][01]\d{8}$/,
-    "Enter a Nigerian number, like 08031234567",
-  );
+  .regex(/^\+?[\d ()-]{7,20}$/, "Enter a phone number");
 
 /** Where a supplier is paid. Changes only through Finance's approval. */
 export const vendorBankSchema = z.object({
   bankName: z.string().trim().min(2).max(60),
-  accountNumber: z
-    .string()
-    .trim()
-    .regex(/^\d{10}$/, "A NUBAN account number has 10 digits"),
+  /** Checked against the organization's bank account format. */
+  accountNumber: z.string().trim().min(4).max(34),
   accountName: z.string().trim().min(3).max(120),
   reason: z
     .string()
@@ -31,11 +26,8 @@ export const createVendorSchema = z.object({
     .toUpperCase()
     .regex(/^VEN-\d{3,6}$/, "Codes look like VEN-031"),
   name: z.string().trim().min(3).max(200),
-  tin: z
-    .string()
-    .trim()
-    .regex(/^\d{8}-\d{4}$/, "Tax IDs look like 12345678-0001")
-    .optional(),
+  /** Checked against the organization's tax ID format. */
+  tin: z.string().trim().min(3).max(30).optional(),
   email: z.email().optional(),
   phone: phone.optional(),
   address: z.string().trim().min(5).max(500),
@@ -60,7 +52,8 @@ const poLine = z.object({
   unit: z.string().trim().min(1).max(20),
   /** The supplier's quoted price per unit, before VAT. */
   unitPrice: z.number().positive().max(1e11),
-  vatRate: z.number().min(0).max(0.5).default(0.075),
+  /** Blank takes the organization's default VAT rate. */
+  vatRate: z.number().min(0).max(0.5).optional(),
 });
 
 export const purchaseOrderLinesSchema = z.object({
@@ -122,5 +115,5 @@ export const billPaidSchema = z.object({
 });
 export type BillPaidInput = z.infer<typeof billPaidSchema>;
 
-/** Naira either side of the computed total that still counts as a match (rounding). */
+/** Currency units either side of the computed total that still counts as a match (rounding). */
 export const BILL_TOTAL_TOLERANCE = 1;

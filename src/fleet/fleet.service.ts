@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   Inject,
   Injectable,
@@ -10,7 +11,7 @@ import type {
   CreateVehicleInput,
   VehicleDocumentInput,
   updateDriverSchema,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { asc, desc, eq, inArray } from "drizzle-orm";
 import type { z } from "zod";
 import type { Db, Tx } from "../db/client.js";
@@ -27,7 +28,7 @@ import {
 import { ApprovalsService } from "../approvals/approvals.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
-import { addDays, lagosDate } from "../common/dates.js";
+import { addDays, businessDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { DB } from "../common/tokens.js";
 import {
@@ -36,6 +37,7 @@ import {
   latestDocs,
   vehicleIssues,
 } from "./eligibility.js";
+import { org } from "../common/org.js";
 
 type Vehicle = typeof vehicles.$inferSelect;
 type Driver = typeof drivers.$inferSelect;
@@ -70,7 +72,7 @@ export class FleetService {
           vs.map((v) => v.id),
         ),
       );
-    const today = lagosDate();
+    const today = businessDate();
     const soon = addDays(today, EXPIRING_DAYS);
     return vs.map((v) => {
       const latest = [
@@ -103,7 +105,7 @@ export class FleetService {
       .limit(1);
     return {
       ...view(v),
-      issues: vehicleIssues(v, latest, lagosDate()),
+      issues: vehicleIssues(v, latest, businessDate()),
       documents: latest,
       history: docs,
       position: position
@@ -166,6 +168,16 @@ export class FleetService {
     user: AuthUser,
     actor: Actor,
   ) {
+    if (!org().vehicleDocuments.some((d) => d.key === input.kind))
+      throw new BadRequestException({
+        message: "Validation failed",
+        issues: [
+          {
+            path: "kind",
+            message: "Not one of the organization's vehicle documents",
+          },
+        ],
+      });
     return this.db.transaction(async (tx) => {
       const v = await this.lockVehicle(tx, id);
       if (v.status === "retired")
@@ -197,7 +209,7 @@ export class FleetService {
         .from(vehicleDocuments)
         .where(eq(vehicleDocuments.vehicleId, id));
       const latest = [...latestDocs(docs).values()];
-      const issues = vehicleIssues(v, latest, lagosDate(), {
+      const issues = vehicleIssues(v, latest, businessDate(), {
         forOnboarding: true,
       });
       if (issues.length)
@@ -205,14 +217,17 @@ export class FleetService {
           `${v.plate} isn't ready: ${issues.join("; ")}`,
         );
       const papers = latest
-        .map((d) => `${d.kind.replace("_", " ")} ${d.number} to ${d.expiresOn}`)
+        .map(
+          (d) =>
+            `${org().vehicleDocuments.find((t) => t.key === d.kind)?.label ?? d.kind} ${d.number} to ${d.expiresOn}`,
+        )
         .join("; ");
       const approval = await this.approvals.createIn(
         tx,
         {
           kind: "truck_onboarding",
           ref: v.plate,
-          title: `${v.plate} into service: ${v.kind.replace("_", " ")}, ${Number(v.capacity).toLocaleString("en-NG")}${v.ownership === "transporter" ? `, ${v.transporterName}` : ", Cocean-owned"}`,
+          title: `${v.plate} into service: ${v.kind.replace("_", " ")}, ${Number(v.capacity).toLocaleString(org().locale)}${v.ownership === "transporter" ? `, ${v.transporterName}` : ", own fleet"}`,
           amount: 0,
           reason: `Papers checked: ${papers}.${v.trackerId ? ` Tracker ${v.trackerId} fitted.` : " No tracker fitted yet."}`,
         },
@@ -266,7 +281,7 @@ export class FleetService {
   // ── Drivers ───────────────────────────────────────────────────────────────
 
   async listDrivers() {
-    const today = lagosDate();
+    const today = businessDate();
     return (
       await this.db.select().from(drivers).orderBy(asc(drivers.name))
     ).map((d) => ({ ...d, issues: driverIssues(d, today) }));
@@ -304,7 +319,7 @@ export class FleetService {
         entityId: d.id,
         after: d,
       });
-      return { ...d, issues: driverIssues(d, lagosDate()) };
+      return { ...d, issues: driverIssues(d, businessDate()) };
     });
   }
 
@@ -327,7 +342,7 @@ export class FleetService {
         before,
         after,
       });
-      return { ...after, issues: driverIssues(after, lagosDate()) };
+      return { ...after, issues: driverIssues(after, businessDate()) };
     });
   }
 
@@ -360,7 +375,7 @@ export class FleetService {
       if (d.status === "suspended")
         throw new ConflictException(`${d.name} is already suspended`);
       const after = await this.suspendIn(tx, id, reason, actor);
-      return { ...after, issues: driverIssues(after, lagosDate()) };
+      return { ...after, issues: driverIssues(after, businessDate()) };
     });
   }
 
@@ -381,7 +396,7 @@ export class FleetService {
         before: { status: "suspended", reason: d.suspendedReason },
         after: { status: "active", note },
       });
-      return { ...after, issues: driverIssues(after, lagosDate()) };
+      return { ...after, issues: driverIssues(after, businessDate()) };
     });
   }
 
@@ -414,7 +429,7 @@ export class FleetService {
       .select()
       .from(vehicleDocuments)
       .where(eq(vehicleDocuments.vehicleId, vehicleId));
-    const today = lagosDate();
+    const today = businessDate();
     const problems = [
       ...vehicleIssues(v, [...latestDocs(docs).values()], today).map(
         (i) => `${v.plate}: ${i}`,
@@ -423,7 +438,7 @@ export class FleetService {
     ];
     if (quantity > Number(v.capacity) + 1e-9)
       problems.push(
-        `${v.plate} holds ${Number(v.capacity).toLocaleString("en-NG")}; ${quantity.toLocaleString("en-NG")} won't fit`,
+        `${v.plate} holds ${Number(v.capacity).toLocaleString(org().locale)}; ${quantity.toLocaleString(org().locale)} won't fit`,
       );
     if (problems.length)
       throw new UnprocessableEntityException(

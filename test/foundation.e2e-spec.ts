@@ -15,16 +15,16 @@ let app: INestApplication;
 let admin: ReturnType<typeof as>;
 const people = {
   sales: {
-    email: "tunde@cocean.test",
+    email: "tunde@erp.test",
     name: "Tunde Adeyemi",
     roles: ["sales"],
   },
   finance: {
-    email: "amina@cocean.test",
+    email: "amina@erp.test",
     name: "Amina Bello",
     roles: ["finance"],
   },
-  md: { email: "kelechi@cocean.test", name: "Kelechi Amadi", roles: ["md"] },
+  md: { email: "kelechi@erp.test", name: "Kelechi Amadi", roles: ["md"] },
 };
 const PASSWORD = "a-good-long-password";
 const tokens: Record<keyof typeof people, string> = {
@@ -63,7 +63,7 @@ describe("health and sign-in", () => {
       .expect(401);
     const b = await request(app.getHttpServer())
       .post("/v1/auth/login")
-      .send({ email: "nobody@cocean.test", password: "wrong-password" })
+      .send({ email: "nobody@erp.test", password: "wrong-password" })
       .expect(401);
     expect(a.body.message).toBe(b.body.message);
   });
@@ -71,7 +71,7 @@ describe("health and sign-in", () => {
   it("locks an account after five failed attempts", async () => {
     await admin
       .post("/v1/users", {
-        email: "locked@cocean.test",
+        email: "locked@erp.test",
         name: "Lock Test",
         password: PASSWORD,
         roles: ["depot"],
@@ -80,11 +80,11 @@ describe("health and sign-in", () => {
     for (let i = 0; i < 5; i++)
       await request(app.getHttpServer())
         .post("/v1/auth/login")
-        .send({ email: "locked@cocean.test", password: "nope-nope" })
+        .send({ email: "locked@erp.test", password: "nope-nope" })
         .expect(401);
     const r = await request(app.getHttpServer())
       .post("/v1/auth/login")
-      .send({ email: "locked@cocean.test", password: PASSWORD })
+      .send({ email: "locked@erp.test", password: PASSWORD })
       .expect(401);
     expect(r.body.message).toMatch(/Too many failed attempts/);
   });
@@ -181,13 +181,13 @@ describe("permissions and audit", () => {
   it("signs a disabled user out everywhere at once", async () => {
     const created = await admin
       .post("/v1/users", {
-        email: "leaver@cocean.test",
+        email: "leaver@erp.test",
         name: "Peter Nwachukwu",
         password: PASSWORD,
         roles: ["depot"],
       })
       .expect(201);
-    const t = await login(app, "leaver@cocean.test", PASSWORD);
+    const t = await login(app, "leaver@erp.test", PASSWORD);
     await admin
       .patch(`/v1/users/${created.body.id}/status`, { status: "disabled" })
       .expect(200);

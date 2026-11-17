@@ -50,6 +50,8 @@ export const PERMISSIONS = {
   "stations.operate":
     "Receive product, close shifts and fill cylinders at your own site",
   "takings.bank": "Record shift takings lodged at the bank",
+  "settings.manage":
+    "Change the organization's name, logo, formats, tolerances and lists",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

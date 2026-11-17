@@ -1,5 +1,5 @@
 import { Inject, Injectable } from "@nestjs/common";
-import type { Permission, RoleKey } from "@cocean/contracts";
+import type { Permission, RoleKey } from "@qorrix-erp/contracts";
 import { and, asc, eq } from "drizzle-orm";
 import type { Db } from "../db/client.js";
 import {

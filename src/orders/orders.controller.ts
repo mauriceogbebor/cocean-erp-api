@@ -13,7 +13,7 @@ import {
   createOrderSchema,
   reasonSchema,
   type CreateOrderInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { z } from "zod";
 import {
   type Actor,

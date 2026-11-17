@@ -3,7 +3,7 @@ import {
   type ExecutionContext,
   SetMetadata,
 } from "@nestjs/common";
-import type { Permission, RoleKey } from "@cocean/contracts";
+import type { Permission, RoleKey } from "@qorrix-erp/contracts";
 import type { Request } from "express";
 
 export type AuthUser = {

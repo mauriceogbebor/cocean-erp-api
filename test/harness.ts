@@ -8,11 +8,10 @@ import { runMigrations } from "../src/db/migrate.js";
 import { seed } from "../src/db/seed.js";
 
 export const TEST_DB =
-  process.env.TEST_DATABASE_URL ??
-  "postgres://cocean:cocean@localhost:5432/cocean_test";
+  process.env.TEST_DATABASE_URL ?? "postgres://erp:erp@localhost:5432/erp_test";
 export const TRACKER_KEY = "tracker-key-for-tests-0123456789abcdef";
 export const ADMIN = {
-  email: "admin@cocean.test",
+  email: "admin@erp.test",
   password: "admin-password-123",
 };
 

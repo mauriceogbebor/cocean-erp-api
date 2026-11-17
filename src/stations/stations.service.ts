@@ -6,13 +6,11 @@ import {
   UnprocessableEntityException,
 } from "@nestjs/common";
 import {
-  STATION_RULES,
-  STOCK_RULES,
   type BankTakingsInput,
   type CloseShiftInput,
   type CreatePumpInput,
   type StationReceiptInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { and, asc, desc, eq, inArray, isNull, type SQL } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.js";
 import {
@@ -32,19 +30,18 @@ import {
 import { ApprovalsService } from "../approvals/approvals.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
-import { lagosDate } from "../common/dates.js";
+import { businessDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { nextNumber } from "../common/numbering.js";
 import { DB } from "../common/tokens.js";
 import { PricingService } from "../pricing/pricing.service.js";
 import { StockService } from "../stock/stock.service.js";
 import { assertSiteAccess } from "./site-access.js";
+import { org, money } from "../common/org.js";
 
 type Shift = typeof shifts.$inferSelect;
 const kobo = (n: number | string) => Math.round(Number(n) * 100);
 const n2 = (n: number) => Math.round(n * 100) / 100;
-const naira = (n: number) =>
-  `₦${n.toLocaleString("en-NG", { maximumFractionDigits: 2 })}`;
 const RETAIL_KINDS = ["station", "lpg_plant"] as const;
 
 @Injectable()
@@ -183,7 +180,7 @@ export class StationsService {
     user: AuthUser,
     actor: Actor,
   ) {
-    if (input.receivedOn > lagosDate())
+    if (input.receivedOn > businessDate())
       throw new UnprocessableEntityException(
         "A delivery can't be received in the future",
       );
@@ -225,7 +222,7 @@ export class StationsService {
    * the Head of Operations, for larger amounts) decides.
    */
   async close(input: CloseShiftInput, user: AuthUser, actor: Actor) {
-    if (input.shiftDate > lagosDate())
+    if (input.shiftDate > businessDate())
       throw new UnprocessableEntityException(
         "A shift can't be closed for a future date",
       );
@@ -254,7 +251,7 @@ export class StationsService {
           `This shift is already closed as ${dup.number}`,
         );
 
-      const pl = await this.pricing.inForce(tx, lagosDate());
+      const pl = await this.pricing.inForce(tx, businessDate());
       const price = (code: string) => {
         const p = pl?.lines.find((l) => l.productCode === code)?.price;
         if (p === undefined)
@@ -359,8 +356,8 @@ export class StationsService {
         const within =
           Math.abs(variance) <=
           Math.max(
-            STOCK_RULES.dipTolerancePct * book,
-            STOCK_RULES.dipToleranceMin,
+            org().stock.dipTolerancePct * book,
+            org().stock.dipToleranceMin,
           );
         if (within && variance !== 0)
           await this.stock.post(tx, t, {
@@ -389,8 +386,8 @@ export class StationsService {
       const cashOk =
         Math.abs(cashVarianceK) <=
         Math.max(
-          STATION_RULES.cashToleranceNaira * 100,
-          STATION_RULES.cashTolerancePct * expectedK,
+          org().stations.cashToleranceAmount * 100,
+          org().stations.cashTolerancePct * expectedK,
         );
       const balanced = cashOk && tankCheck.every((c) => c.within);
 
@@ -438,12 +435,12 @@ export class StationsService {
         const parts = [
           ...(!cashOk
             ? [
-                `takings ${cashVarianceK < 0 ? "short" : "over"} by ${naira(Math.abs(cashVarianceK) / 100)} against ${naira(expectedK / 100)} sold`,
+                `takings ${cashVarianceK < 0 ? "short" : "over"} by ${money(Math.abs(cashVarianceK) / 100)} against ${money(expectedK / 100)} sold`,
               ]
             : []),
           ...off.map(
             (c) =>
-              `${c.code} ${c.variance < 0 ? "short" : "over"} by ${Math.abs(c.variance).toLocaleString("en-NG")} against book ${c.book.toLocaleString("en-NG")}`,
+              `${c.code} ${c.variance < 0 ? "short" : "over"} by ${Math.abs(c.variance).toLocaleString(org().locale)} against book ${c.book.toLocaleString(org().locale)}`,
           ),
         ];
         approval = await this.approvals.createIn(
@@ -484,7 +481,7 @@ export class StationsService {
     user: AuthUser,
     actor: Actor,
   ) {
-    if (input.bankedOn > lagosDate())
+    if (input.bankedOn > businessDate())
       throw new UnprocessableEntityException(
         "A lodgement can't be in the future",
       );
