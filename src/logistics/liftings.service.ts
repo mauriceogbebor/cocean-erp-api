@@ -14,7 +14,7 @@ import {
   type LoadLiftingInput,
   type PlanLiftingInput,
 } from "@cocean/contracts";
-import { and, asc, desc, eq, inArray, ne, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, ne, or, type SQL } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.js";
 import {
   customerSites,
@@ -32,6 +32,7 @@ import type { Actor, AuthUser } from "../common/auth-context.js";
 import { num } from "../common/num.js";
 import { nextNumber } from "../common/numbering.js";
 import { DB } from "../common/tokens.js";
+import { FleetService } from "../fleet/fleet.service.js";
 import { StockService } from "../stock/stock.service.js";
 
 type Lifting = typeof liftings.$inferSelect;
@@ -50,6 +51,7 @@ export class LiftingsService {
     @Inject(DB) private readonly db: Db,
     @Inject(AuditService) private readonly audit: AuditService,
     @Inject(StockService) private readonly stock: StockService,
+    @Inject(FleetService) private readonly fleet: FleetService,
   ) {}
 
   async list(q: { status?: Status; orderId?: string }) {
@@ -197,6 +199,36 @@ export class LiftingsService {
             `Line ${line.lineNo} (${line.productCode}): ${fmt(d.quantity)} ${line.unit} planned, but only ${fmt(left)} is still to load`,
           );
       }
+      const total = input.drops.reduce((a, d) => a + d.quantity, 0);
+      const { vehicle, driver } = await this.fleet.dispatchable(
+        tx,
+        input.vehicleId,
+        input.driverId,
+        total,
+      );
+      const [busy] = await tx
+        .select({
+          number: liftings.number,
+          driverId: liftings.driverId,
+          vehicleId: liftings.vehicleId,
+        })
+        .from(liftings)
+        .where(
+          and(
+            inArray(liftings.status, ["planned", "in_transit"]),
+            or(
+              eq(liftings.vehicleId, vehicle.id),
+              eq(liftings.driverId, driver.id),
+            ),
+          ),
+        )
+        .limit(1);
+      if (busy)
+        throw new ConflictException(
+          busy.vehicleId === vehicle.id
+            ? `${vehicle.plate} is already on ${busy.number}`
+            : `${driver.name} is already driving ${busy.number}`,
+        );
       const number = await nextNumber(tx, "LI");
       const [l] = await tx
         .insert(liftings)
@@ -204,12 +236,11 @@ export class LiftingsService {
           number,
           orderId: o.id,
           siteId: depot.id,
-          truckPlate: input.truckPlate.replace(
-            /^([A-Z]{3})-?(\d{3})-?([A-Z]{2})$/,
-            "$1-$2-$3",
-          ),
-          driverName: input.driverName,
-          driverPhone: input.driverPhone,
+          vehicleId: vehicle.id,
+          driverId: driver.id,
+          truckPlate: vehicle.plate,
+          driverName: driver.name,
+          driverPhone: driver.phone,
           plannedBy: user.id,
         })
         .returning();
@@ -295,6 +326,14 @@ export class LiftingsService {
       )
         throw new UnprocessableEntityException(
           "Record every drop on this truck, once each",
+        );
+      // Papers can lapse, and holds be placed, between planning and loading.
+      if (l.vehicleId && l.driverId)
+        await this.fleet.dispatchable(
+          tx,
+          l.vehicleId,
+          l.driverId,
+          input.drops.reduce((a, d) => a + d.loadedQuantity, 0),
         );
       const allSeals = input.drops.flatMap((d) => d.seals);
       if (new Set(allSeals).size !== allSeals.length)
@@ -466,7 +505,13 @@ export class LiftingsService {
   }
 
   /** Security closes an exception once it is investigated; the finding stays on record. */
-  async resolve(dropId: string, finding: string, user: AuthUser, actor: Actor) {
+  async resolve(
+    dropId: string,
+    finding: string,
+    suspendDriver: boolean,
+    user: AuthUser,
+    actor: Actor,
+  ) {
     return this.db.transaction(async (tx) => {
       const [d] = await tx
         .select()
@@ -488,12 +533,28 @@ export class LiftingsService {
         })
         .where(eq(liftingDrops.id, dropId));
       await this.settle(tx, d.liftingId);
+      const [l] = await tx
+        .select()
+        .from(liftings)
+        .where(eq(liftings.id, d.liftingId));
+      if (suspendDriver) {
+        if (!l.driverId)
+          throw new UnprocessableEntityException(
+            "This loading has no driver on the fleet register to suspend",
+          );
+        await this.fleet.suspendIn(
+          tx,
+          l.driverId,
+          `Delivery exception on ${l.number}: ${finding}`.slice(0, 500),
+          actor,
+        );
+      }
       await this.audit.record(tx, actor, {
         action: "delivery.resolved",
         entityType: "lifting",
         entityId: d.liftingId,
         before: { drop: dropId, exceptions: d.exceptions },
-        after: { finding },
+        after: { finding, suspendedDriver: suspendDriver ? l.driverId : null },
       });
       return this.get(d.liftingId, tx);
     });

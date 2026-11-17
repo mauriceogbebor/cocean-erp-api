@@ -18,6 +18,12 @@ import { CustomersController } from "./customers/customers.controller.js";
 import { CustomersService } from "./customers/customers.service.js";
 import { FinanceController } from "./finance/finance.controller.js";
 import { ReceivablesService } from "./finance/receivables.service.js";
+import { FleetController } from "./fleet/fleet.controller.js";
+import { FleetService } from "./fleet/fleet.service.js";
+import { TrackingService } from "./fleet/tracking.service.js";
+import { LpgService } from "./stations/lpg.service.js";
+import { StationsController } from "./stations/stations.controller.js";
+import { StationsService } from "./stations/stations.service.js";
 import { HealthController } from "./health/health.controller.js";
 import { MasterDataController } from "./master-data/master-data.controller.js";
 import { MasterDataService } from "./master-data/master-data.service.js";
@@ -71,6 +77,8 @@ export class AppModule {
         ProcurementController,
         StockController,
         LiftingsController,
+        FleetController,
+        StationsController,
       ],
       providers: [
         { provide: ENV, useValue: env },
@@ -91,6 +99,10 @@ export class AppModule {
         BillsService,
         StockService,
         LiftingsService,
+        FleetService,
+        TrackingService,
+        StationsService,
+        LpgService,
         // Order matters: who you are, then what you may do.
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_GUARD, useClass: PermissionsGuard },

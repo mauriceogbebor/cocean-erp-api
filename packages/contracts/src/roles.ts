@@ -20,7 +20,12 @@ const commercialRead: Permission[] = [
 ];
 const requester: Permission[] = [...read, "approvals.request"];
 const buyingRead: Permission[] = ["vendors.read", "purchase_orders.read"];
-const movementRead: Permission[] = ["stock.read", "liftings.read"];
+const movementRead: Permission[] = [
+  "stock.read",
+  "liftings.read",
+  "fleet.read",
+  "stations.read",
+];
 
 export const ROLES = {
   admin: {
@@ -40,6 +45,8 @@ export const ROLES = {
       "approvals.policies.manage",
       "stock.read",
       "tanks.manage",
+      "stations.read",
+      "stations.manage",
     ],
   },
   md: {
@@ -85,6 +92,7 @@ export const ROLES = {
       ...buyingRead,
       ...movementRead,
       "bills.manage",
+      "takings.bank",
     ],
   },
   sales: {
@@ -143,12 +151,12 @@ export const ROLES = {
   fleet: {
     name: "Fleet and maintenance manager",
     description: "Keeps trucks legal, serviced and registered.",
-    permissions: requester,
+    permissions: [...requester, ...movementRead, "fleet.manage"],
   },
   station: {
     name: "Station manager",
     description: "Runs a retail station's tanks, pumps and takings.",
-    permissions: read,
+    permissions: [...read, "stock.read", "stations.read", "stations.operate"],
   },
   security: {
     name: "Security and HSE lead",
@@ -159,7 +167,12 @@ export const ROLES = {
   lpg: {
     name: "LPG plant manager",
     description: "Runs an LPG plant: safety, filling, receipt and day close.",
-    permissions: requester,
+    permissions: [
+      ...requester,
+      "stock.read",
+      "stations.read",
+      "stations.operate",
+    ],
   },
   weighbridge: {
     name: "Weighbridge operator",

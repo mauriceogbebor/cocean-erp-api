@@ -8,6 +8,8 @@ import {
   as,
   freshDatabase,
   login,
+  readyDriver,
+  readyTruck,
   startApp,
   TEST_DB,
 } from "./harness.js";
@@ -46,12 +48,22 @@ const people = {
     name: "Ifeoma Nnaji",
     roles: ["procurement"],
   },
+  fleet: { email: "emeka@cocean.test", name: "Emeka Obi", roles: ["fleet"] },
+  exec: {
+    email: "adaeze@cocean.test",
+    name: "Adaeze Nwosu",
+    roles: ["executive"],
+  },
 };
 type Who = keyof typeof people | "admin";
 const PASSWORD = "a-good-long-password";
 const u = {} as Record<Who, ReturnType<typeof as>>;
 const today = lagosDate();
 const ids = {
+  truck: "",
+  truck2: "",
+  driver: "",
+  driver2: "",
   depot: "",
   tank: "",
   vendor: "",
@@ -156,6 +168,20 @@ beforeAll(async () => {
     "md",
     (await u.sales.post(`/v1/price-lists/${pl.body.id}/submit`).expect(200))
       .body.approval.id,
+  );
+  ids.truck = await readyTruck(u.fleet, u.exec, "RIV-430-BN");
+  ids.truck2 = await readyTruck(u.fleet, u.exec, "ABA-207-AA");
+  ids.driver = await readyDriver(
+    u.fleet,
+    "Sunday Okon",
+    "08051234567",
+    "RIV-DL-0001",
+  );
+  ids.driver2 = await readyDriver(
+    u.fleet,
+    "Kunle Bakare",
+    "08061234567",
+    "ABA-DL-0002",
   );
 });
 afterAll(() => app?.close());
@@ -319,9 +345,8 @@ describe("loading and delivery", () => {
     const truck = {
       orderId: ids.order,
       siteId: ids.depot,
-      truckPlate: "riv430bn",
-      driverName: "Sunday Okon",
-      driverPhone: "08051234567",
+      vehicleId: ids.truck,
+      driverId: ids.driver,
     };
     await u.depot.post("/v1/liftings", { ...truck, drops: [] }).expect(403);
     const l = await u.ops
@@ -502,9 +527,8 @@ describe("loading and delivery", () => {
       .post("/v1/liftings", {
         orderId: o.body.id,
         siteId: ids.depot,
-        truckPlate: "ABA-207-AA",
-        driverName: "Kunle Bakare",
-        driverPhone: "08061234567",
+        vehicleId: ids.truck2,
+        driverId: ids.driver2,
         drops: [{ orderLineId: o.body.lines[0].id, quantity: 1_000 }],
       })
       .expect(201);

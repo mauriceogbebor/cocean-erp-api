@@ -43,6 +43,20 @@
       "when": 1793273046077,
       "tag": "0005_product_movement",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793301173802,
+      "tag": "0006_fleet",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793349776938,
+      "tag": "0007_stations_lpg",
+      "breakpoints": true
     }
   ]
 }

@@ -54,26 +54,15 @@ export const dipSchema = z.object({
 });
 export type DipInput = z.infer<typeof dipSchema>;
 
-const plate = z
-  .string()
-  .trim()
-  .toUpperCase()
-  .regex(/^[A-Z]{3}-?\d{3}-?[A-Z]{2}$/, "Plates look like RIV-430-BN");
-
 /** Operations plans one truck against a released order: one drop per order line. */
 export const planLiftingSchema = z.object({
   orderId: z.uuid(),
   /** The depot it loads at. */
   siteId: z.uuid(),
-  truckPlate: plate,
-  driverName: z.string().trim().min(3).max(120),
-  driverPhone: z
-    .string()
-    .trim()
-    .regex(
-      /^(\+234|0)[789][01]\d{8}$/,
-      "Enter a Nigerian number, like 08031234567",
-    ),
+  /** An active vehicle with its papers in date. */
+  vehicleId: z.uuid(),
+  /** An active driver with a valid licence and induction. */
+  driverId: z.uuid(),
   drops: z
     .array(z.object({ orderLineId: z.uuid(), quantity: qty }))
     .min(1)
@@ -124,6 +113,8 @@ export const confirmDeliverySchema = z.object({
 export type ConfirmDeliveryInput = z.infer<typeof confirmDeliverySchema>;
 
 export const resolveDeliverySchema = z.object({
+  /** Stops the driver being dispatched until Fleet reinstates them. */
+  suspendDriver: z.boolean().default(false),
   /** What the investigation found and what happens next. */
   finding: z
     .string()

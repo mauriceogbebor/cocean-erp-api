@@ -42,6 +42,14 @@ export const PERMISSIONS = {
   "liftings.plan": "Plan trucks against released orders",
   "liftings.load": "Load, meter and seal trucks at the depot",
   "deliveries.resolve": "Investigate and close delivery exceptions",
+  "fleet.read": "See vehicles, drivers, their papers and positions",
+  "fleet.manage":
+    "Register vehicles and drivers, record papers, hold and suspend",
+  "stations.read": "See stations, pumps, shifts and LPG fills",
+  "stations.manage": "Set up pumps and assign people to sites",
+  "stations.operate":
+    "Receive product, close shifts and fill cylinders at your own site",
+  "takings.bank": "Record shift takings lodged at the bank",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

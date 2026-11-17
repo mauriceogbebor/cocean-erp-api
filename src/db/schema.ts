@@ -746,6 +746,7 @@ export const stockMovementKind = pgEnum("stock_movement_kind", [
   "lifting",
   "dip_adjustment",
   "variance_adjustment",
+  "sale",
 ]);
 
 /**
@@ -820,6 +821,10 @@ export const liftings = pgTable(
     siteId: uuid("site_id")
       .notNull()
       .references(() => sites.id),
+    /** Null only for liftings planned before the fleet register existed. */
+    vehicleId: uuid("vehicle_id").references(() => vehicles.id),
+    driverId: uuid("driver_id").references(() => drivers.id),
+    /** Snapshots at planning, so history reads right if records change. */
     truckPlate: text("truck_plate").notNull(),
     driverName: text("driver_name").notNull(),
     driverPhone: text("driver_phone").notNull(),
@@ -886,4 +891,282 @@ export const liftingDrops = pgTable(
     index("lifting_drops_line_idx").on(t.orderLineId),
     uniqueIndex("lifting_drops_token_key").on(t.tokenHash),
   ],
+);
+
+// ── Fleet: vehicles and their papers, drivers, tracker positions ───────────
+export const vehicleKind = pgEnum("vehicle_kind", [
+  "tanker",
+  "lpg_bridger",
+  "flatbed",
+  "other",
+]);
+export const vehicleStatus = pgEnum("vehicle_status", [
+  "onboarding",
+  "pending_approval",
+  "active",
+  "retired",
+]);
+export const ownership = pgEnum("ownership", ["owned", "transporter"]);
+
+export const vehicles = pgTable(
+  "vehicles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    plate: text("plate").notNull(),
+    kind: vehicleKind("kind").notNull(),
+    capacity: numeric("capacity", { precision: 12, scale: 3 }).notNull(),
+    compartments: jsonb("compartments").$type<number[]>(),
+    ownership: ownership("ownership").notNull(),
+    transporterName: text("transporter_name"),
+    trackerId: text("tracker_id"),
+    status: vehicleStatus("status").notNull().default("onboarding"),
+    /** Off the road until cleared: a defect, an accident, an investigation. */
+    holdReason: text("hold_reason"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("vehicles_plate_key").on(t.plate),
+    uniqueIndex("vehicles_tracker_key").on(t.trackerId),
+  ],
+);
+
+export const vehicleDocKind = pgEnum("vehicle_doc_kind", [
+  "registration",
+  "roadworthiness",
+  "insurance",
+  "nmdpra_permit",
+  "calibration",
+]);
+
+/** Papers, append-only by use: a renewal is a new row; the latest of each kind counts. */
+export const vehicleDocuments = pgTable(
+  "vehicle_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id),
+    kind: vehicleDocKind("kind").notNull(),
+    number: text("number").notNull(),
+    issuer: text("issuer").notNull(),
+    expiresOn: date("expires_on").notNull(),
+    recordedBy: uuid("recorded_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [
+    index("vehicle_documents_vehicle_idx").on(t.vehicleId, t.kind, t.createdAt),
+  ],
+);
+
+export const driverStatus = pgEnum("driver_status", ["active", "suspended"]);
+
+export const drivers = pgTable(
+  "drivers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    phone: text("phone").notNull(),
+    licenceNumber: text("licence_number").notNull(),
+    licenceExpiresOn: date("licence_expires_on").notNull(),
+    inductedOn: date("inducted_on"),
+    employer: text("employer"),
+    status: driverStatus("status").notNull().default("active"),
+    suspendedReason: text("suspended_reason"),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("drivers_licence_key").on(t.licenceNumber),
+    uniqueIndex("drivers_phone_key").on(t.phone),
+  ],
+);
+
+export const vehiclePositions = pgTable(
+  "vehicle_positions",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id),
+    lat: numeric("lat", { precision: 9, scale: 6 }).notNull(),
+    lng: numeric("lng", { precision: 9, scale: 6 }).notNull(),
+    speedKph: numeric("speed_kph", { precision: 5, scale: 1 }),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("vehicle_positions_vehicle_idx").on(t.vehicleId, t.recordedAt)],
+);
+
+// ── Stations and LPG plants ────────────────────────────────────────────────
+/** Who works at which site. Station and plant actions are limited to them. */
+export const userSites = pgTable(
+  "user_sites",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.siteId] })],
+);
+
+export const pumps = pgTable(
+  "pumps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+    tankId: uuid("tank_id")
+      .notNull()
+      .references(() => tanks.id),
+    code: text("code").notNull(),
+    /** The meter when the pump was set up; later shifts start from the last close. */
+    openingMeter: numeric("opening_meter", {
+      precision: 14,
+      scale: 2,
+    }).notNull(),
+    active: boolean("active").notNull().default(true),
+    createdAt: created(),
+  },
+  (t) => [uniqueIndex("pumps_site_code_key").on(t.siteId, t.code)],
+);
+
+export const shiftStatus = pgEnum("shift_status", [
+  "balanced",
+  "variance_pending",
+  "variance_accepted",
+  "variance_rejected",
+  "banked",
+]);
+
+export const shifts = pgTable(
+  "shifts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+    shiftDate: date("shift_date").notNull(),
+    period: text("period").notNull(),
+    status: shiftStatus("status").notNull(),
+    /** What the meters and fills say should have been taken. */
+    expected: numeric("expected", { precision: 18, scale: 2 }).notNull(),
+    cash: numeric("cash", { precision: 18, scale: 2 }).notNull(),
+    pos: numeric("pos", { precision: 18, scale: 2 }).notNull(),
+    transfer: numeric("transfer", { precision: 18, scale: 2 }).notNull(),
+    /** Declared less expected: negative is short. */
+    cashVariance: numeric("cash_variance", {
+      precision: 18,
+      scale: 2,
+    }).notNull(),
+    /** Each tank: book after sales, the dip, the difference, within tolerance or not. */
+    tankCheck: jsonb("tank_check")
+      .$type<
+        {
+          tankId: string;
+          code: string;
+          productCode: string;
+          book: number;
+          dip: number;
+          variance: number;
+          within: boolean;
+        }[]
+      >()
+      .notNull(),
+    notes: text("notes"),
+    closedBy: uuid("closed_by")
+      .notNull()
+      .references(() => users.id),
+    bank: text("bank"),
+    bankRef: text("bank_ref"),
+    bankedAmount: numeric("banked_amount", { precision: 18, scale: 2 }),
+    bankedOn: date("banked_on"),
+    bankedBy: uuid("banked_by").references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [
+    uniqueIndex("shifts_number_key").on(t.number),
+    /** A shift is closed once. */
+    uniqueIndex("shifts_site_date_period_key").on(
+      t.siteId,
+      t.shiftDate,
+      t.period,
+    ),
+  ],
+);
+
+export const shiftPumps = pgTable(
+  "shift_pumps",
+  {
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => shifts.id, { onDelete: "cascade" }),
+    pumpId: uuid("pump_id")
+      .notNull()
+      .references(() => pumps.id),
+    opening: numeric("opening", { precision: 14, scale: 2 }).notNull(),
+    closing: numeric("closing", { precision: 14, scale: 2 }).notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 2 }).notNull(),
+    price: numeric("price", { precision: 18, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.shiftId, t.pumpId] })],
+);
+
+export const cylinderStatus = pgEnum("cylinder_status", [
+  "active",
+  "condemned",
+]);
+
+export const cylinders = pgTable(
+  "cylinders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    serial: text("serial").notNull(),
+    sizeKg: numeric("size_kg", { precision: 5, scale: 1 }).notNull(),
+    owner: text("owner").notNull(),
+    testDueOn: date("test_due_on").notNull(),
+    status: cylinderStatus("status").notNull().default("active"),
+    condemnedReason: text("condemned_reason"),
+    createdAt: created(),
+  },
+  (t) => [uniqueIndex("cylinders_serial_key").on(t.serial)],
+);
+
+export const fills = pgTable(
+  "fills",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+    tankId: uuid("tank_id")
+      .notNull()
+      .references(() => tanks.id),
+    cylinderId: uuid("cylinder_id")
+      .notNull()
+      .references(() => cylinders.id),
+    kg: numeric("kg", { precision: 6, scale: 2 }).notNull(),
+    price: numeric("price", { precision: 18, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    /** The shift whose takings include it; set when the shift closes. */
+    shiftId: uuid("shift_id").references(() => shifts.id),
+    filledBy: uuid("filled_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [index("fills_site_shift_idx").on(t.siteId, t.shiftId)],
 );

@@ -2,25 +2,31 @@ import { pathToFileURL } from "node:url";
 import { hash } from "@node-rs/argon2";
 import type { RoleKey } from "@cocean/contracts";
 import { eq } from "drizzle-orm";
-import { lagosDate } from "../common/dates.js";
+import { addDays, lagosDate } from "../common/dates.js";
 import { createDb, type Db } from "./client.js";
 import { seed } from "./seed.js";
 import {
   customerLedger,
   customerSites,
   customers,
+  cylinders,
+  drivers,
   priceListLines,
   priceLists,
+  pumps,
   sites,
   stockMovements,
   tanks,
   userRoles,
+  userSites,
   users,
+  vehicleDocuments,
+  vehicles,
   vendors,
 } from "./schema.js";
 
 /**
- * Sample people and records (customers, prices, tanks with stock, a supplier) for development and Cocean's trial runs: the
+ * Sample people and records (customers, prices, tanks with stock, suppliers, trucks and drivers, a station and an LPG plant) for development and Cocean's trial runs: the
  * same names as the clickable demo, so both tell one story. Records are
  * inserted directly (already approved), not through the approval flow.
  * Refuses to run in production, and does nothing if it has run before.
@@ -84,6 +90,24 @@ export const SAMPLE_PEOPLE: {
     email: "musa.abdullahi@cocean.dev",
     name: "Musa Abdullahi",
     roles: ["security"],
+  },
+  {
+    key: "fleet",
+    email: "emeka.obi@cocean.dev",
+    name: "Emeka Obi",
+    roles: ["fleet"],
+  },
+  {
+    key: "station",
+    email: "blessing.okoro@cocean.dev",
+    name: "Blessing Okoro",
+    roles: ["station"],
+  },
+  {
+    key: "lpg",
+    email: "obinna.kalu@cocean.dev",
+    name: "Obinna Kalu",
+    roles: ["lpg"],
   },
 ];
 
@@ -220,6 +244,107 @@ export async function seedSample(
       })),
     );
 
+    // A retail station and an LPG plant, each with its manager assigned.
+    const [owerri, aba] = await tx
+      .insert(sites)
+      .values([
+        {
+          code: "OWR-01",
+          name: "Owerri station",
+          kind: "station",
+          state: "Imo",
+        },
+        {
+          code: "ABA-LPG",
+          name: "Aba LPG plant",
+          kind: "lpg_plant",
+          state: "Abia",
+        },
+      ])
+      .returning();
+    const [owrPms, owrAgo, abaLpg] = await tx
+      .insert(tanks)
+      .values([
+        {
+          siteId: owerri.id,
+          code: "OWR-T1",
+          productCode: "PMS",
+          capacity: "33000",
+          safeCapacity: "31350",
+        },
+        {
+          siteId: owerri.id,
+          code: "OWR-T2",
+          productCode: "AGO",
+          capacity: "33000",
+          safeCapacity: "31350",
+        },
+        {
+          siteId: aba.id,
+          code: "ABA-T1",
+          productCode: "LPG",
+          capacity: "20000",
+          safeCapacity: "17000",
+        },
+      ])
+      .returning();
+    await tx.insert(stockMovements).values([
+      { tankId: owrPms.id, kind: "opening", quantity: "21400", ref: "OPENING" },
+      { tankId: owrAgo.id, kind: "opening", quantity: "14800", ref: "OPENING" },
+      { tankId: abaLpg.id, kind: "opening", quantity: "11250", ref: "OPENING" },
+    ]);
+    await tx.insert(pumps).values([
+      {
+        siteId: owerri.id,
+        tankId: owrPms.id,
+        code: "P1",
+        openingMeter: "184220.00",
+      },
+      {
+        siteId: owerri.id,
+        tankId: owrPms.id,
+        code: "P2",
+        openingMeter: "97305.00",
+      },
+      {
+        siteId: owerri.id,
+        tankId: owrAgo.id,
+        code: "P3",
+        openingMeter: "61880.00",
+      },
+    ]);
+    await tx.insert(userSites).values([
+      { userId: ids.station, siteId: owerri.id },
+      { userId: ids.lpg, siteId: aba.id },
+    ]);
+    await tx.insert(cylinders).values([
+      {
+        serial: "CYL-12-0001",
+        sizeKg: "12.5",
+        owner: "Cocean",
+        testDueOn: addDays(today, 400),
+      },
+      {
+        serial: "CYL-12-0002",
+        sizeKg: "12.5",
+        owner: "Cocean",
+        testDueOn: addDays(today, 200),
+      },
+      // Past its pressure test: the plant must refuse to fill it.
+      {
+        serial: "CYL-12-0417",
+        sizeKg: "12.5",
+        owner: "Mama Chinedu Stores",
+        testDueOn: addDays(today, -12),
+      },
+      {
+        serial: "CYL-06-0090",
+        sizeKg: "6",
+        owner: "Cocean",
+        testDueOn: addDays(today, 500),
+      },
+    ]);
+
     const [onne] = await tx
       .select()
       .from(sites)
@@ -268,6 +393,91 @@ export async function seedSample(
       bankStatus: "verified",
       bankVerifiedAt: new Date(),
     });
+    // Fleet: two trucks in service, one still being onboarded, two drivers.
+    const truckRows = await tx
+      .insert(vehicles)
+      .values([
+        {
+          plate: "RIV-430-BN",
+          kind: "tanker",
+          capacity: "33000",
+          compartments: [11000, 11000, 11000],
+          ownership: "owned",
+          trackerId: "ARC-88123",
+          status: "active",
+          createdBy: ids.fleet,
+        },
+        {
+          plate: "ABA-207-AA",
+          kind: "tanker",
+          capacity: "45000",
+          compartments: [15000, 15000, 15000],
+          ownership: "transporter",
+          transporterName: "Eastline Haulage Ltd",
+          trackerId: "ARC-88140",
+          status: "active",
+          createdBy: ids.fleet,
+        },
+        {
+          plate: "RIV-512-TX",
+          kind: "tanker",
+          capacity: "33000",
+          compartments: [11000, 11000, 11000],
+          ownership: "owned",
+          status: "onboarding",
+          createdBy: ids.fleet,
+        },
+      ])
+      .returning();
+    const papers = [
+      "registration",
+      "roadworthiness",
+      "insurance",
+      "nmdpra_permit",
+      "calibration",
+    ] as const;
+    await tx.insert(vehicleDocuments).values(
+      truckRows.flatMap((t, i) =>
+        papers
+          // RIV-512-TX is still waiting for its calibration certificate.
+          .filter((k) => !(i === 2 && k === "calibration"))
+          .map((kind) => ({
+            vehicleId: t.id,
+            kind,
+            number: `${kind.toUpperCase().replace("_", "-")}-${t.plate}`,
+            issuer:
+              kind === "nmdpra_permit"
+                ? "NMDPRA"
+                : kind === "calibration"
+                  ? "Weights and Measures"
+                  : "Rivers State",
+            // ABA-207-AA's insurance runs out soon, to show the warning.
+            expiresOn:
+              i === 1 && kind === "insurance"
+                ? addDays(today, 20)
+                : addDays(today, 300),
+            recordedBy: ids.fleet,
+          })),
+      ),
+    );
+    await tx.insert(drivers).values([
+      {
+        name: "Sunday Okon",
+        phone: "08051234567",
+        licenceNumber: "RIV-DL-0001",
+        licenceExpiresOn: addDays(today, 700),
+        inductedOn: today,
+      },
+      {
+        name: "Kunle Bakare",
+        phone: "08061234567",
+        licenceNumber: "ABA-DL-0002",
+        licenceExpiresOn: addDays(today, 500),
+        inductedOn: today,
+        employer: "Eastline Haulage Ltd",
+      },
+    ]);
+
     await tx.insert(vendors).values({
       code: "VEN-040",
       name: "Gulf Products Trading Ltd",

@@ -105,10 +105,17 @@ export class LiftingsController {
   @RequirePermissions("deliveries.resolve")
   resolve(
     @Param("id", ParseUUIDPipe) id: string,
-    @Body(new ZodPipe(resolveDeliverySchema)) body: { finding: string },
+    @Body(new ZodPipe(resolveDeliverySchema))
+    body: { finding: string; suspendDriver: boolean },
     @CurrentUser() user: AuthUser,
     @CurrentActor() actor: Actor,
   ) {
-    return this.liftings.resolve(id, body.finding, user, actor);
+    return this.liftings.resolve(
+      id,
+      body.finding,
+      body.suspendDriver,
+      user,
+      actor,
+    );
   }
 }
