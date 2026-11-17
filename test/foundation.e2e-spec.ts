@@ -25,12 +25,18 @@ const people = {
     roles: ["finance"],
   },
   md: { email: "kelechi@erp.test", name: "Kelechi Amadi", roles: ["md"] },
+  exec: {
+    email: "adaeze@erp.test",
+    name: "Adaeze Nwosu",
+    roles: ["executive"],
+  },
 };
 const PASSWORD = "a-good-long-password";
 const tokens: Record<keyof typeof people, string> = {
   sales: "",
   finance: "",
   md: "",
+  exec: "",
 };
 
 beforeAll(async () => {
@@ -200,12 +206,14 @@ describe("permissions and audit", () => {
 });
 
 describe("approvals", () => {
+  // Kinds raised from their own records (orders, payroll) are refused here;
+  // a workshop work order is raised directly.
   const credit = {
-    kind: "payroll",
-    ref: "PAY-2026-10",
-    title: "October payroll, 214 staff",
-    amount: 37_200_000,
-    reason: "Variance to September explained: two starters, one leaver.",
+    kind: "work_order",
+    ref: "WO-2026-090",
+    title: "Engine overhaul for RIV-430-BN",
+    amount: 3_720_000,
+    reason: "Two quotes attached; the cheaper workshop can start Monday.",
   };
   let id = "";
 
@@ -220,14 +228,14 @@ describe("approvals", () => {
     expect(r.body.message).toMatch(/raised from the record/);
   });
 
-  it("routes payroll to the MD", async () => {
+  it("routes a large work order to the Head of Operations", async () => {
     const r = await as(app, tokens.sales)
       .post("/v1/approvals", credit)
       .expect(201);
     expect(r.body).toMatchObject({
-      approverRole: "md",
+      approverRole: "executive",
       status: "pending",
-      amount: 37_200_000,
+      amount: 3_720_000,
     });
     id = r.body.id;
     await as(app, tokens.sales).post("/v1/approvals", credit).expect(409);
@@ -260,26 +268,26 @@ describe("approvals", () => {
     expect(f.body.message).toMatch(/outside your approval authority/);
   });
 
-  it("shows the MD what is waiting for them", async () => {
-    const r = await as(app, tokens.md)
+  it("shows the Head of Operations what is waiting for them", async () => {
+    const r = await as(app, tokens.exec)
       .get("/v1/approvals?scope=mine&status=pending")
       .expect(200);
     expect(r.body.map((a: { ref: string }) => a.ref)).toEqual(
-      expect.arrayContaining(["PAY-2026-10"]),
+      expect.arrayContaining(["WO-2026-090"]),
     );
     expect(
-      r.body.find((a: { ref: string }) => a.ref === "PAY-2026-10"),
+      r.body.find((a: { ref: string }) => a.ref === "WO-2026-090"),
     ).toMatchObject({ requestedByName: "Tunde Adeyemi", decidedByName: null });
     expect(r.body.map((a: { ref: string }) => a.ref)).not.toContain(
-      "WO-2026-034",
+      "WO-2026-033",
     );
   });
 
   it("needs a reason to reject, then records one decision only", async () => {
-    await as(app, tokens.md)
+    await as(app, tokens.exec)
       .post(`/v1/approvals/${id}/decide`, { decision: "rejected" })
       .expect(400);
-    const r = await as(app, tokens.md)
+    const r = await as(app, tokens.exec)
       .post(`/v1/approvals/${id}/decide`, {
         decision: "approved",
         note: "One-off. Review the limit.",
@@ -289,7 +297,7 @@ describe("approvals", () => {
       status: "approved",
       decisionNote: "One-off. Review the limit.",
     });
-    await as(app, tokens.md)
+    await as(app, tokens.exec)
       .post(`/v1/approvals/${id}/decide`, {
         decision: "rejected",
         note: "changed my mind",
@@ -306,13 +314,13 @@ describe("approvals", () => {
 
   it("decides concurrently only once", async () => {
     const r = await as(app, tokens.sales)
-      .post("/v1/approvals", { ...credit, ref: "PAY-2026-11" })
+      .post("/v1/approvals", { ...credit, ref: "WO-2026-091" })
       .expect(201);
     const both = await Promise.all([
-      as(app, tokens.md).post(`/v1/approvals/${r.body.id}/decide`, {
+      as(app, tokens.exec).post(`/v1/approvals/${r.body.id}/decide`, {
         decision: "approved",
       }),
-      as(app, tokens.md).post(`/v1/approvals/${r.body.id}/decide`, {
+      as(app, tokens.exec).post(`/v1/approvals/${r.body.id}/decide`, {
         decision: "approved",
       }),
     ]);
@@ -321,9 +329,9 @@ describe("approvals", () => {
 
   it("lets only the maker withdraw a pending request", async () => {
     const r = await as(app, tokens.sales)
-      .post("/v1/approvals", { ...credit, ref: "PAY-2026-12" })
+      .post("/v1/approvals", { ...credit, ref: "WO-2026-092" })
       .expect(201);
-    await as(app, tokens.md)
+    await as(app, tokens.exec)
       .post(`/v1/approvals/${r.body.id}/withdraw`)
       .expect(403);
     const w = await as(app, tokens.sales)

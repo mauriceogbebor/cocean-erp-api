@@ -9,3 +9,4 @@ export * from "./stock";
 export * from "./fleet";
 export * from "./stations";
 export * from "./organization";
+export * from "./people";

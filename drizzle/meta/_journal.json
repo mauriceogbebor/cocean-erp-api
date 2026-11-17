@@ -64,6 +64,13 @@
       "when": 1794915514890,
       "tag": "0008_organization",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794929579872,
+      "tag": "0009_people_payroll",
+      "breakpoints": true
     }
   ]
 }

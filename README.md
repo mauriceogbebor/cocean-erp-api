@@ -35,8 +35,8 @@ Check it: `curl localhost:4000/health`.
 ### Sample data
 
 For development, demos and trial runs, load Northwind Petroleum, a made-up
-Nigerian distributor with the people and records the clickable demo uses (Kelechi, Adaeze, Tunde, Amina, Chidinma, Ifeoma, Chinonso, Sani, Musa, Emeka, Blessing, Obinna and Ifeanyi the administrator; two customers, an
-approved price list, tanks at Onne with stock, two suppliers, three trucks and two drivers, the Owerri station with three pumps and the Aba LPG plant with four cylinders):
+Nigerian distributor with the people and records the clickable demo uses (Kelechi, Adaeze, Tunde, Amina, Chidinma, Ifeoma, Chinonso, Sani, Musa, Emeka, Blessing, Obinna, Halima in HR and Ifeanyi the administrator; two customers, an
+approved price list, tanks at Onne with stock, two suppliers, three trucks and two drivers, the Owerri station with three pumps and the Aba LPG plant with four cylinders, and five pay grades with eleven staff, one still onboarding):
 
 ```bash
 SAMPLE_PASSWORD=choose-a-password pnpm db:seed:sample
@@ -113,6 +113,11 @@ pnpm test        # TEST_DATABASE_URL defaults to postgres://erp:erp@localhost:54
 | PUT · POST         | /v1/users/:id/sites · /v1/pumps                                                                                          | stations.manage                                      |
 | POST               | /v1/tanks/:id/receipts · /v1/shifts (close) · /v1/fills · /v1/cylinders · /v1/cylinders/:id/condemn (own sites only)     | stations.operate                                     |
 | POST               | /v1/shifts/:id/bank                                                                                                      | takings.bank                                         |
+| GET                | /v1/grades · /v1/employees · /v1/employees/:id                                                                           | people.read                                          |
+| POST · PUT         | /v1/grades · /v1/grades/:id · /v1/employees · /v1/employees/:id · /v1/employees/:id/pay · /activate · /exit              | people.manage                                        |
+| GET                | /v1/payroll-runs · /v1/payroll-runs/:id · /v1/payroll-runs/:id/payslips/:employeeId                                      | payroll.read                                         |
+| POST               | /v1/payroll-runs (work a month out) · /v1/payroll-runs/:id/submit                                                        | payroll.prepare                                      |
+| GET · POST         | /v1/payroll-runs/:id/bank-file (CSV) · /v1/payroll-runs/:id/pay                                                          | payroll.pay                                          |
 
 `credit_limit`, `price_list`, `credit_override`, `vendor_bank`, `purchase_order` and `supplier_payment`, `variance`, `truck_onboarding` and `shift_variance` requests are raised only
 from the record they are about; `POST /v1/approvals` refuses them.

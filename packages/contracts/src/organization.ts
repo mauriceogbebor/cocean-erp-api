@@ -2,6 +2,7 @@ import { z } from "zod";
 import { STATION_RULES } from "./stations";
 import { STOCK_RULES } from "./stock";
 import { FLEET_RULES, vehicleKinds } from "./fleet";
+import { DEFAULT_PAYROLL_RULES, payrollRulesSchema } from "./people";
 
 /**
  * Everything that differs between the organizations running Qorrix ERP.
@@ -173,6 +174,7 @@ export const organizationSettingsSchema = z.object({
     cashToleranceAmount: z.number().min(0).max(1e9),
     cashTolerancePct: pct,
   }),
+  payroll: payrollRulesSchema,
   fleet: z.object({
     inductionValidDays: z.number().int().min(30).max(1_095),
     trackerStaleMinutes: z.number().int().min(1).max(1_440),
@@ -228,6 +230,7 @@ export const DEFAULT_ORGANIZATION: OrganizationSettings = {
     cashTolerancePct: STATION_RULES.cashTolerancePct,
   },
   fleet: { ...FLEET_RULES },
+  payroll: DEFAULT_PAYROLL_RULES,
 };
 
 /** What anyone may see before signing in. */

@@ -1,6 +1,7 @@
 import { pathToFileURL } from "node:url";
 import { hash } from "@node-rs/argon2";
 import { DEFAULT_ORGANIZATION, type RoleKey } from "@qorrix-erp/contracts";
+import { nextNumber } from "../common/numbering.js";
 import { eq } from "drizzle-orm";
 import { addDays, businessDate } from "../common/dates.js";
 import { createDb, type Db } from "./client.js";
@@ -10,6 +11,8 @@ import {
   customerSites,
   customers,
   cylinders,
+  employees,
+  grades,
   organization,
   drivers,
   priceListLines,
@@ -117,6 +120,12 @@ export const SAMPLE_PEOPLE: {
     email: "obinna.kalu@northwind.example",
     name: "Obinna Kalu",
     roles: ["lpg"],
+  },
+  {
+    key: "hr",
+    email: "halima.sani@northwind.example",
+    name: "Halima Sani",
+    roles: ["hr"],
   },
   {
     key: "admin",
@@ -514,6 +523,275 @@ export async function seedSample(
       accountName: "GULF PRODUCTS TRADING LTD",
       bankStatus: "verified",
       bankVerifiedAt: new Date(),
+    });
+  });
+  await seedSampleStaff(db, password);
+}
+
+/**
+ * Northwind's staff and pay grades, for HR and payroll. Loaded on its own so
+ * an installation that already has the rest of the sample data gets it too.
+ */
+async function seedSampleStaff(db: Db, password: string) {
+  await db.transaction(async (tx) => {
+    const [done] = await tx.select({ id: grades.id }).from(grades).limit(1);
+    if (done) return;
+    const hr = SAMPLE_PEOPLE.find((p) => p.key === "hr")!;
+    const [made] = await tx
+      .insert(users)
+      .values({
+        email: hr.email,
+        name: hr.name,
+        passwordHash: await hash(password),
+      })
+      .onConflictDoNothing()
+      .returning({ id: users.id });
+    const hrId =
+      made?.id ??
+      (
+        await tx
+          .select({ id: users.id })
+          .from(users)
+          .where(eq(users.email, hr.email))
+      )[0].id;
+    await tx
+      .insert(userRoles)
+      .values({ userId: hrId, roleKey: "hr" })
+      .onConflictDoNothing();
+
+    const g = await tx
+      .insert(grades)
+      .values([
+        {
+          code: "G1",
+          name: "Operative",
+          minMonthly: "70000",
+          maxMonthly: "250000",
+        },
+        {
+          code: "G2",
+          name: "Officer",
+          minMonthly: "200000",
+          maxMonthly: "500000",
+        },
+        {
+          code: "G3",
+          name: "Manager",
+          minMonthly: "450000",
+          maxMonthly: "1200000",
+        },
+        {
+          code: "G4",
+          name: "Head of department",
+          minMonthly: "1000000",
+          maxMonthly: "2500000",
+        },
+        {
+          code: "G5",
+          name: "Executive",
+          minMonthly: "2000000",
+          maxMonthly: "6000000",
+        },
+      ])
+      .returning();
+    const grade = (code: string) => g.find((x) => x.code === code)!.id;
+    const site = async (code: string) =>
+      (
+        await tx
+          .select({ id: sites.id })
+          .from(sites)
+          .where(eq(sites.code, code))
+      )[0]?.id ?? null;
+    const [hq, depot, owerri, aba] = await Promise.all(
+      ["PHC-HQ", "ONN-DEP", "OWR-01", "ABA-LPG"].map(site),
+    );
+    // Monthly pay: basic, housing, transport, other.
+    const staff: [
+      string,
+      string,
+      string,
+      string,
+      string | null,
+      string,
+      number[],
+      string,
+      string,
+    ][] = [
+      [
+        "Kelechi Amadi",
+        "Executive",
+        "Managing Director",
+        "G5",
+        hq,
+        "Rivers",
+        [2_000_000, 1_000_000, 300_000, 200_000],
+        "Zenith Bank",
+        "2001000101",
+      ],
+      [
+        "Amina Bello",
+        "Finance",
+        "Finance controller",
+        "G4",
+        hq,
+        "Rivers",
+        [800_000, 400_000, 150_000, 50_000],
+        "Guaranty Trust Bank",
+        "0102000202",
+      ],
+      [
+        "Halima Sani",
+        "Human resources",
+        "HR and payroll manager",
+        "G3",
+        hq,
+        "Rivers",
+        [450_000, 225_000, 75_000, 0],
+        "Access Bank",
+        "0703000303",
+      ],
+      [
+        "Tunde Adeyemi",
+        "Sales",
+        "Sales manager",
+        "G3",
+        hq,
+        "Rivers",
+        [400_000, 200_000, 75_000, 25_000],
+        "First Bank",
+        "3004000404",
+      ],
+      [
+        "Musa Abdullahi",
+        "Operations",
+        "Loading supervisor",
+        "G2",
+        depot,
+        "Rivers",
+        [200_000, 100_000, 40_000, 0],
+        "United Bank for Africa",
+        "2105000505",
+      ],
+      [
+        "Sunday Okon",
+        "Logistics",
+        "Tanker driver",
+        "G1",
+        depot,
+        "Rivers",
+        [110_000, 50_000, 20_000, 0],
+        "Fidelity Bank",
+        "6206000606",
+      ],
+      [
+        "Kunle Bakare",
+        "Logistics",
+        "Tanker driver",
+        "G1",
+        depot,
+        "Rivers",
+        [110_000, 50_000, 20_000, 0],
+        "Wema Bank",
+        "0207000707",
+      ],
+      [
+        "Blessing Okoro",
+        "Retail",
+        "Station manager",
+        "G2",
+        owerri,
+        "Imo",
+        [180_000, 90_000, 30_000, 0],
+        "Zenith Bank",
+        "2208000808",
+      ],
+      [
+        "Obinna Kalu",
+        "LPG",
+        "Plant manager",
+        "G2",
+        aba,
+        "Abia",
+        [190_000, 95_000, 35_000, 0],
+        "Access Bank",
+        "0709000909",
+      ],
+      [
+        "Ngozi Eze",
+        "Operations",
+        "Weighbridge operator",
+        "G1",
+        depot,
+        "Rivers",
+        [90_000, 40_000, 15_000, 0],
+        "First Bank",
+        "3010001010",
+      ],
+    ];
+    const funds = [
+      "Stanbic IBTC Pension",
+      "ARM Pension",
+      "Leadway Pensure",
+      "Access Pensions",
+    ];
+    for (const [
+      i,
+      [
+        name,
+        department,
+        jobTitle,
+        code,
+        siteId,
+        taxState,
+        [basic, housing, transport, other],
+        bankName,
+        accountNumber,
+      ],
+    ] of staff.entries())
+      await tx.insert(employees).values({
+        number: await nextNumber(tx, "EMP"),
+        name,
+        department,
+        jobTitle,
+        siteId,
+        gradeId: grade(code),
+        employmentType: "permanent",
+        status: "active",
+        startDate: `202${i % 5}-0${(i % 9) + 1}-01`,
+        basic: String(basic),
+        housing: String(housing),
+        transport: String(transport),
+        other: String(other),
+        bankName,
+        accountNumber,
+        accountName: name.toUpperCase(),
+        pfa: funds[i % funds.length],
+        rsaPin: `PEN${String(100200300400 + i * 1111)}`,
+        taxState,
+        nhfOptIn: i % 3 === 0,
+        annualRent: String(i % 2 ? 1_800_000 : 0),
+        activatedBy: hrId,
+        createdBy: hrId,
+      });
+    // A joiner HR hasn't finished: no pension details yet.
+    await tx.insert(employees).values({
+      number: await nextNumber(tx, "EMP"),
+      name: "Daniel Effiong",
+      department: "Logistics",
+      jobTitle: "Tanker driver",
+      siteId: depot,
+      gradeId: grade("G1"),
+      employmentType: "contract",
+      startDate: businessDate().slice(0, 8) + "01",
+      basic: "100000",
+      housing: "45000",
+      transport: "20000",
+      other: "0",
+      bankName: "Polaris Bank",
+      accountNumber: "1711001111",
+      accountName: "DANIEL EFFIONG",
+      taxState: "Rivers",
+      createdBy: hrId,
     });
   });
 }

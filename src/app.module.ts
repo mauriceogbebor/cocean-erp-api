@@ -27,6 +27,9 @@ import { StationsService } from "./stations/stations.service.js";
 import { HealthController } from "./health/health.controller.js";
 import { MasterDataController } from "./master-data/master-data.controller.js";
 import { MasterDataService } from "./master-data/master-data.service.js";
+import { PeopleController } from "./people/people.controller.js";
+import { PayrollService } from "./people/payroll.service.js";
+import { PeopleService } from "./people/people.service.js";
 import { OrganizationController } from "./organization/organization.controller.js";
 import { OrganizationService } from "./organization/organization.service.js";
 import { OrdersController } from "./orders/orders.controller.js";
@@ -68,6 +71,7 @@ export class AppModule {
         HealthController,
         AuthController,
         OrganizationController,
+        PeopleController,
         AccessController,
         UsersController,
         AuditController,
@@ -89,6 +93,8 @@ export class AppModule {
         AccessService,
         AuditService,
         OrganizationService,
+        PeopleService,
+        PayrollService,
         AuthService,
         UsersService,
         MasterDataService,

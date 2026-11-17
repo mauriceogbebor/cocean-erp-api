@@ -50,6 +50,12 @@ export const PERMISSIONS = {
   "stations.operate":
     "Receive product, close shifts and fill cylinders at your own site",
   "takings.bank": "Record shift takings lodged at the bank",
+  "people.read": "See staff records and their pay",
+  "people.manage":
+    "Add staff, set grades and pay, activate joiners and record leavers",
+  "payroll.read": "See payroll runs, payslips and remittances",
+  "payroll.prepare": "Calculate a month's payroll and submit it for approval",
+  "payroll.pay": "Download the bank file and record payroll as paid",
   "settings.manage":
     "Change the organization's name, logo, formats, tolerances and lists",
 } as const;

@@ -1175,3 +1175,147 @@ export const fills = pgTable(
   },
   (t) => [index("fills_site_shift_idx").on(t.siteId, t.shiftId)],
 );
+
+// ── People and payroll ──────────────────────────────────────────────────────
+const amount = (name: string) =>
+  numeric(name, { precision: 18, scale: 2 }).notNull();
+
+/** Pay bands: a person's monthly gross must sit inside their grade's band. */
+export const grades = pgTable("grades", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  minMonthly: amount("min_monthly"),
+  maxMonthly: amount("max_monthly"),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
+export const employeeStatus = pgEnum("employee_status", [
+  "onboarding",
+  "active",
+  "exited",
+]);
+
+export const employees = pgTable(
+  "employees",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull().unique(),
+    name: text("name").notNull(),
+    email: text("email"),
+    phone: text("phone"),
+    department: text("department").notNull(),
+    jobTitle: text("job_title").notNull(),
+    siteId: uuid("site_id").references(() => sites.id),
+    gradeId: uuid("grade_id")
+      .notNull()
+      .references(() => grades.id),
+    employmentType: text("employment_type").notNull(),
+    status: employeeStatus("status").notNull().default("onboarding"),
+    startDate: date("start_date").notNull(),
+    exitDate: date("exit_date"),
+    exitReason: text("exit_reason"),
+    // Monthly pay.
+    basic: amount("basic"),
+    housing: amount("housing"),
+    transport: amount("transport"),
+    other: amount("other"),
+    bankName: text("bank_name"),
+    accountNumber: text("account_number"),
+    accountName: text("account_name"),
+    pfa: text("pfa"),
+    rsaPin: text("rsa_pin"),
+    taxId: text("tax_id"),
+    taxState: text("tax_state").notNull(),
+    nhfOptIn: boolean("nhf_opt_in").notNull().default(false),
+    annualRent: amount("annual_rent").default("0"),
+    activatedBy: uuid("activated_by").references(() => users.id),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [index("employees_status_idx").on(t.status)],
+);
+
+export const payrollStatus = pgEnum("payroll_status", [
+  "draft",
+  "submitted",
+  "approved",
+  "rejected",
+  "paid",
+]);
+
+export const payrollRuns = pgTable("payroll_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  number: text("number").notNull(),
+  /** YYYY-MM; one run per month. */
+  period: text("period").notNull().unique(),
+  status: payrollStatus("status").notNull().default("draft"),
+  headcount: integer("headcount").notNull(),
+  gross: amount("gross"),
+  net: amount("net"),
+  paye: amount("paye"),
+  pensionEmployee: amount("pension_employee"),
+  pensionEmployer: amount("pension_employer"),
+  nhf: amount("nhf"),
+  nsitf: amount("nsitf"),
+  itf: amount("itf"),
+  /** Gross plus the employer's pension and levies. */
+  employerCost: amount("employer_cost"),
+  /** The rules the run was worked with, so a later settings change can't alter it. */
+  rules: jsonb("rules").notNull(),
+  note: text("note"),
+  approvalId: uuid("approval_id"),
+  preparedBy: uuid("prepared_by")
+    .notNull()
+    .references(() => users.id),
+  calculatedAt: timestamp("calculated_at", { withTimezone: true }).notNull(),
+  paidOn: date("paid_on"),
+  bankRef: text("bank_ref"),
+  paidBy: uuid("paid_by").references(() => users.id),
+  createdAt: created(),
+});
+
+export const payrollLines = pgTable(
+  "payroll_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => payrollRuns.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id),
+    // As at the run, so payslips and bank files don't change afterwards.
+    number: text("number").notNull(),
+    name: text("name").notNull(),
+    department: text("department").notNull(),
+    jobTitle: text("job_title").notNull(),
+    bankName: text("bank_name"),
+    accountNumber: text("account_number"),
+    accountName: text("account_name"),
+    pfa: text("pfa"),
+    rsaPin: text("rsa_pin"),
+    taxState: text("tax_state").notNull(),
+    /** Share of the month worked: 1 unless they joined or left in it. */
+    factor: numeric("factor", { precision: 6, scale: 4 }).notNull(),
+    basic: amount("basic"),
+    housing: amount("housing"),
+    transport: amount("transport"),
+    other: amount("other"),
+    gross: amount("gross"),
+    pensionEmployee: amount("pension_employee"),
+    nhf: amount("nhf"),
+    rentRelief: amount("rent_relief"),
+    paye: amount("paye"),
+    net: amount("net"),
+    pensionEmployer: amount("pension_employer"),
+    nsitf: amount("nsitf"),
+    itf: amount("itf"),
+    flags: jsonb("flags").$type<string[]>().notNull(),
+  },
+  (t) => [uniqueIndex("payroll_lines_run_employee").on(t.runId, t.employeeId)],
+);

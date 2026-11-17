@@ -63,6 +63,8 @@ export const ROLES = {
       "audit.read",
       "users.read",
       "roles.read",
+      "people.read",
+      "payroll.read",
     ],
   },
   executive: {
@@ -94,6 +96,9 @@ export const ROLES = {
       ...movementRead,
       "bills.manage",
       "takings.bank",
+      "people.read",
+      "payroll.read",
+      "payroll.pay",
     ],
   },
   sales: {
@@ -122,7 +127,13 @@ export const ROLES = {
   hr: {
     name: "HR and payroll manager",
     description: "Keeps staff records and prepares payroll.",
-    permissions: requester,
+    permissions: [
+      ...requester,
+      "people.read",
+      "people.manage",
+      "payroll.read",
+      "payroll.prepare",
+    ],
   },
   operations: {
     name: "Operations supervisor",
