@@ -21,6 +21,18 @@ const created = () =>
 const updated = () =>
   timestamp("updated_at", { withTimezone: true }).notNull().defaultNow();
 
+// ── The organization ────────────────────────────────────────────────────────
+/**
+ * One installation serves one organization: a single row (id 1) holding its
+ * name, logo, formats, lists and tolerances (OrganizationSettings).
+ */
+export const organization = pgTable("organization", {
+  id: integer("id").primaryKey().default(1),
+  settings: jsonb("settings").notNull(),
+  updatedBy: uuid("updated_by"),
+  updatedAt: updated(),
+});
+
 // ── Identity and access ─────────────────────────────────────────────────────
 export const userStatus = pgEnum("user_status", ["active", "disabled"]);
 
@@ -153,6 +165,10 @@ export const products = pgTable("products", {
   name: text("name").notNull(),
   unit: text("unit").notNull(),
   density: numeric("density", { precision: 6, scale: 4 }),
+  /** VAT charged on sale, e.g. 0.075. Zero until the organization's tax adviser confirms each product. */
+  vatRate: numeric("vat_rate", { precision: 5, scale: 4 })
+    .notNull()
+    .default("0"),
   active: boolean("active").notNull().default(true),
   createdAt: created(),
   updatedAt: updated(),
@@ -325,6 +341,7 @@ export const orderStatus = pgEnum("order_status", [
   "override_pending",
   "released",
   "cancelled",
+  "invoiced",
 ]);
 
 export const salesOrders = pgTable(
@@ -382,4 +399,986 @@ export const salesOrderLines = pgTable(
       .references(() => customerSites.id),
   },
   (t) => [uniqueIndex("sales_order_lines_no_key").on(t.orderId, t.lineNo)],
+);
+
+// ── Receivables: receipts, invoices and the customer ledger ────────────────
+export const receipts = pgTable(
+  "receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    bank: text("bank").notNull(),
+    bankRef: text("bank_ref").notNull(),
+    receivedOn: date("received_on").notNull(),
+    notes: text("notes"),
+    recordedBy: uuid("recorded_by")
+      .notNull()
+      .references(() => users.id),
+    reversedAt: timestamp("reversed_at", { withTimezone: true }),
+    reversedBy: uuid("reversed_by").references(() => users.id),
+    reversalReason: text("reversal_reason"),
+    createdAt: created(),
+  },
+  (t) => [
+    uniqueIndex("receipts_number_key").on(t.number),
+    /** One bank transaction is recorded once, whoever records it. */
+    uniqueIndex("receipts_bank_ref_key").on(t.bank, t.bankRef),
+    index("receipts_customer_idx").on(t.customerId),
+  ],
+);
+
+export const invoices = pgTable(
+  "invoices",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => salesOrders.id),
+    /** The delivery this invoice is for; null for a whole-order invoice. */
+    dropId: uuid("drop_id").references(() => liftingDrops.id),
+    issuedOn: date("issued_on").notNull(),
+    dueOn: date("due_on").notNull(),
+    subtotal: numeric("subtotal", { precision: 18, scale: 2 }).notNull(),
+    vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
+    total: numeric("total", { precision: 18, scale: 2 }).notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [
+    uniqueIndex("invoices_number_key").on(t.number),
+    index("invoices_order_idx").on(t.orderId),
+    /** At most one whole-order invoice per order. */
+    uniqueIndex("invoices_whole_order_key")
+      .on(t.orderId)
+      .where(sql`drop_id is null`),
+    /** A delivery is invoiced once. Invoices without a drop cover a whole order. */
+    uniqueIndex("invoices_drop_key").on(t.dropId),
+    index("invoices_customer_idx").on(t.customerId),
+  ],
+);
+
+export const invoiceLines = pgTable(
+  "invoice_lines",
+  {
+    invoiceId: uuid("invoice_id")
+      .notNull()
+      .references(() => invoices.id, { onDelete: "cascade" }),
+    lineNo: integer("line_no").notNull(),
+    productCode: text("product_code")
+      .notNull()
+      .references(() => products.code),
+    description: text("description").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    unit: text("unit").notNull(),
+    unitPrice: numeric("unit_price", { precision: 18, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    vatRate: numeric("vat_rate", { precision: 5, scale: 4 }).notNull(),
+    vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.invoiceId, t.lineNo] })],
+);
+
+export const ledgerKind = pgEnum("ledger_kind", [
+  "opening",
+  "invoice",
+  "receipt",
+  "receipt_reversal",
+]);
+
+/**
+ * Every amount a customer owes or has paid, as signed entries: invoices add,
+ * receipts subtract. The balance is the sum. Append-only (trigger), so a
+ * mistake is corrected by a new entry, never by changing an old one.
+ */
+export const customerLedger = pgTable(
+  "customer_ledger",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    customerId: uuid("customer_id")
+      .notNull()
+      .references(() => customers.id),
+    kind: ledgerKind("kind").notNull(),
+    /** The document's number: INV-…, RCT-…, or OPENING. */
+    ref: text("ref").notNull(),
+    docId: uuid("doc_id"),
+    entryDate: date("entry_date").notNull(),
+    /** Positive: the customer owes more. Negative: money in. */
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    /** For invoices: when it falls due. */
+    dueOn: date("due_on"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [index("customer_ledger_customer_idx").on(t.customerId, t.entryDate)],
+);
+
+// ── Procurement: suppliers, purchase orders, goods received, supplier bills ─
+export const vendorBankStatus = pgEnum("vendor_bank_status", [
+  "none",
+  "pending",
+  "verified",
+]);
+
+export const vendors = pgTable(
+  "vendors",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    code: text("code").notNull(),
+    name: text("name").notNull(),
+    tin: text("tin"),
+    email: text("email"),
+    phone: text("phone"),
+    address: text("address").notNull(),
+    /** Only ever set by an approved vendor_bank request. */
+    bankName: text("bank_name"),
+    accountNumber: text("account_number"),
+    accountName: text("account_name"),
+    bankStatus: vendorBankStatus("bank_status").notNull().default("none"),
+    bankVerifiedAt: timestamp("bank_verified_at", { withTimezone: true }),
+    active: boolean("active").notNull().default(true),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [uniqueIndex("vendors_code_key").on(t.code)],
+);
+
+export const poStatus = pgEnum("po_status", [
+  "draft",
+  "pending",
+  "approved",
+  "partially_received",
+  "received",
+  "cancelled",
+]);
+
+export const purchaseOrders = pgTable(
+  "purchase_orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    vendorId: uuid("vendor_id")
+      .notNull()
+      .references(() => vendors.id),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+    status: poStatus("status").notNull().default("draft"),
+    justification: text("justification").notNull(),
+    quoteRef: text("quote_ref"),
+    subtotal: numeric("subtotal", { precision: 18, scale: 2 }).notNull(),
+    vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
+    total: numeric("total", { precision: 18, scale: 2 }).notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    approvedAt: timestamp("approved_at", { withTimezone: true }),
+    cancelledReason: text("cancelled_reason"),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("purchase_orders_number_key").on(t.number),
+    index("purchase_orders_vendor_idx").on(t.vendorId, t.status),
+  ],
+);
+
+export const purchaseOrderLines = pgTable(
+  "purchase_order_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    poId: uuid("po_id")
+      .notNull()
+      .references(() => purchaseOrders.id, { onDelete: "cascade" }),
+    lineNo: integer("line_no").notNull(),
+    productCode: text("product_code").references(() => products.code),
+    description: text("description").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    unit: text("unit").notNull(),
+    unitPrice: numeric("unit_price", { precision: 18, scale: 2 }).notNull(),
+    vatRate: numeric("vat_rate", { precision: 5, scale: 4 }).notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
+    received: numeric("received", { precision: 14, scale: 3 })
+      .notNull()
+      .default("0"),
+    /** Quantity on matched supplier bills. */
+    billed: numeric("billed", { precision: 14, scale: 3 })
+      .notNull()
+      .default("0"),
+  },
+  (t) => [uniqueIndex("purchase_order_lines_no_key").on(t.poId, t.lineNo)],
+);
+
+export const goodsReceipts = pgTable(
+  "goods_receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    poId: uuid("po_id")
+      .notNull()
+      .references(() => purchaseOrders.id),
+    receivedOn: date("received_on").notNull(),
+    deliveryNote: text("delivery_note").notNull(),
+    notes: text("notes"),
+    receivedBy: uuid("received_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [uniqueIndex("goods_receipts_number_key").on(t.number)],
+);
+
+export const goodsReceiptLines = pgTable(
+  "goods_receipt_lines",
+  {
+    receiptId: uuid("receipt_id")
+      .notNull()
+      .references(() => goodsReceipts.id, { onDelete: "cascade" }),
+    poLineId: uuid("po_line_id")
+      .notNull()
+      .references(() => purchaseOrderLines.id),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    /** For product bought in bulk: the tank it went into. */
+    tankId: uuid("tank_id").references(() => tanks.id),
+  },
+  (t) => [primaryKey({ columns: [t.receiptId, t.poLineId] })],
+);
+
+export const billStatus = pgEnum("bill_status", [
+  "matched",
+  "exception",
+  "payment_pending",
+  "approved",
+  "paid",
+  "void",
+]);
+
+export const supplierBills = pgTable(
+  "supplier_bills",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    vendorId: uuid("vendor_id")
+      .notNull()
+      .references(() => vendors.id),
+    poId: uuid("po_id")
+      .notNull()
+      .references(() => purchaseOrders.id),
+    vendorInvoiceNo: text("vendor_invoice_no").notNull(),
+    invoiceDate: date("invoice_date").notNull(),
+    statedTotal: numeric("stated_total", { precision: 18, scale: 2 }).notNull(),
+    subtotal: numeric("subtotal", { precision: 18, scale: 2 }).notNull(),
+    vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
+    total: numeric("total", { precision: 18, scale: 2 }).notNull(),
+    status: billStatus("status").notNull(),
+    /** Why it didn't match: one line per problem. Empty when matched. */
+    exceptions: jsonb("exceptions").$type<string[]>().notNull(),
+    recordedBy: uuid("recorded_by")
+      .notNull()
+      .references(() => users.id),
+    /** The bank details the payment was approved against. */
+    payTo: jsonb("pay_to").$type<{
+      bankName: string;
+      accountNumber: string;
+      accountName: string;
+    }>(),
+    paymentRef: text("payment_ref"),
+    paidOn: date("paid_on"),
+    paidBy: uuid("paid_by").references(() => users.id),
+    voidReason: text("void_reason"),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("supplier_bills_number_key").on(t.number),
+    /** A supplier's invoice is entered once. */
+    uniqueIndex("supplier_bills_vendor_invoice_key").on(
+      t.vendorId,
+      t.vendorInvoiceNo,
+    ),
+  ],
+);
+
+export const supplierBillLines = pgTable(
+  "supplier_bill_lines",
+  {
+    billId: uuid("bill_id")
+      .notNull()
+      .references(() => supplierBills.id, { onDelete: "cascade" }),
+    poLineId: uuid("po_line_id")
+      .notNull()
+      .references(() => purchaseOrderLines.id),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    unitPrice: numeric("unit_price", { precision: 18, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    vat: numeric("vat", { precision: 18, scale: 2 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.billId, t.poLineId] })],
+);
+
+// ── Stock: tanks, an append-only stock ledger, dips ────────────────────────
+export const tanks = pgTable(
+  "tanks",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+    code: text("code").notNull(),
+    productCode: text("product_code")
+      .notNull()
+      .references(() => products.code),
+    capacity: numeric("capacity", { precision: 14, scale: 3 }).notNull(),
+    safeCapacity: numeric("safe_capacity", {
+      precision: 14,
+      scale: 3,
+    }).notNull(),
+    active: boolean("active").notNull().default(true),
+    createdAt: created(),
+  },
+  (t) => [
+    uniqueIndex("tanks_code_key").on(t.code),
+    index("tanks_site_idx").on(t.siteId),
+  ],
+);
+
+export const stockMovementKind = pgEnum("stock_movement_kind", [
+  "opening",
+  "receipt",
+  "lifting",
+  "dip_adjustment",
+  "variance_adjustment",
+  "sale",
+]);
+
+/**
+ * Every unit into or out of a tank, signed. Stock on hand is the sum.
+ * Append-only (trigger): a mistake is corrected by a new movement.
+ */
+export const stockMovements = pgTable(
+  "stock_movements",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    tankId: uuid("tank_id")
+      .notNull()
+      .references(() => tanks.id),
+    kind: stockMovementKind("kind").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    /** The document behind it: GRN-…, LI-…, a dip, an approval. */
+    ref: text("ref").notNull(),
+    docId: uuid("doc_id"),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [index("stock_movements_tank_idx").on(t.tankId, t.id)],
+);
+
+export const dipStatus = pgEnum("dip_status", [
+  "within_tolerance",
+  "variance_pending",
+  "variance_approved",
+  "variance_rejected",
+]);
+
+export const dips = pgTable(
+  "dips",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tankId: uuid("tank_id")
+      .notNull()
+      .references(() => tanks.id),
+    dippedOn: date("dipped_on").notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 3 }).notNull(),
+    temperature: numeric("temperature", { precision: 5, scale: 2 }),
+    /** Book stock when the dip was recorded, and the difference. */
+    book: numeric("book", { precision: 14, scale: 3 }).notNull(),
+    variance: numeric("variance", { precision: 14, scale: 3 }).notNull(),
+    status: dipStatus("status").notNull(),
+    notes: text("notes"),
+    recordedBy: uuid("recorded_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [index("dips_tank_idx").on(t.tankId, t.createdAt)],
+);
+
+// ── Logistics: liftings (one truck) and their drops (one delivery each) ────
+export const liftingStatus = pgEnum("lifting_status", [
+  "planned",
+  "in_transit",
+  "delivered",
+  "exception",
+  "cancelled",
+]);
+
+export const liftings = pgTable(
+  "liftings",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => salesOrders.id),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+    /** Null only for liftings planned before the fleet register existed. */
+    vehicleId: uuid("vehicle_id").references(() => vehicles.id),
+    driverId: uuid("driver_id").references(() => drivers.id),
+    /** Snapshots at planning, so history reads right if records change. */
+    truckPlate: text("truck_plate").notNull(),
+    driverName: text("driver_name").notNull(),
+    driverPhone: text("driver_phone").notNull(),
+    status: liftingStatus("status").notNull().default("planned"),
+    plannedBy: uuid("planned_by")
+      .notNull()
+      .references(() => users.id),
+    loadedBy: uuid("loaded_by").references(() => users.id),
+    loadedAt: timestamp("loaded_at", { withTimezone: true }),
+    cancelledReason: text("cancelled_reason"),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("liftings_number_key").on(t.number),
+    index("liftings_order_idx").on(t.orderId),
+  ],
+);
+
+export const dropStatus = pgEnum("drop_status", [
+  "planned",
+  "in_transit",
+  "delivered",
+  "exception",
+  "resolved",
+  "cancelled",
+]);
+
+export const liftingDrops = pgTable(
+  "lifting_drops",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    liftingId: uuid("lifting_id")
+      .notNull()
+      .references(() => liftings.id, { onDelete: "cascade" }),
+    orderLineId: uuid("order_line_id")
+      .notNull()
+      .references(() => salesOrderLines.id),
+    plannedQuantity: numeric("planned_quantity", {
+      precision: 14,
+      scale: 3,
+    }).notNull(),
+    tankId: uuid("tank_id").references(() => tanks.id),
+    loadedQuantity: numeric("loaded_quantity", { precision: 14, scale: 3 }),
+    /** Seals fitted at the depot. Never shown to the receiver or the driver. */
+    seals: jsonb("seals").$type<string[]>(),
+    status: dropStatus("status").notNull().default("planned"),
+    /** sha256 of the receiver's one-time link token. */
+    tokenHash: text("token_hash"),
+    tokenExpiresAt: timestamp("token_expires_at", { withTimezone: true }),
+    receiverName: text("receiver_name"),
+    receivedQuantity: numeric("received_quantity", { precision: 14, scale: 3 }),
+    receivedSeals: jsonb("received_seals").$type<string[]>(),
+    receiverNotes: text("receiver_notes"),
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
+    /** Why the delivery didn't reconcile; empty when it did. */
+    exceptions: jsonb("exceptions").$type<string[]>(),
+    finding: text("finding"),
+    resolvedBy: uuid("resolved_by").references(() => users.id),
+    resolvedAt: timestamp("resolved_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("lifting_drops_lifting_idx").on(t.liftingId),
+    index("lifting_drops_line_idx").on(t.orderLineId),
+    uniqueIndex("lifting_drops_token_key").on(t.tokenHash),
+  ],
+);
+
+// ── Fleet: vehicles and their papers, drivers, tracker positions ───────────
+export const vehicleKind = pgEnum("vehicle_kind", [
+  "tanker",
+  "lpg_bridger",
+  "flatbed",
+  "other",
+]);
+export const vehicleStatus = pgEnum("vehicle_status", [
+  "onboarding",
+  "pending_approval",
+  "active",
+  "retired",
+]);
+export const ownership = pgEnum("ownership", ["owned", "transporter"]);
+
+export const vehicles = pgTable(
+  "vehicles",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    plate: text("plate").notNull(),
+    kind: vehicleKind("kind").notNull(),
+    capacity: numeric("capacity", { precision: 12, scale: 3 }).notNull(),
+    compartments: jsonb("compartments").$type<number[]>(),
+    ownership: ownership("ownership").notNull(),
+    transporterName: text("transporter_name"),
+    trackerId: text("tracker_id"),
+    status: vehicleStatus("status").notNull().default("onboarding"),
+    /** Off the road until cleared: a defect, an accident, an investigation. */
+    holdReason: text("hold_reason"),
+    /** Set when an open work order put the hold on; only closing it clears the hold. */
+    holdWorkOrderId: uuid("hold_work_order_id"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("vehicles_plate_key").on(t.plate),
+    uniqueIndex("vehicles_tracker_key").on(t.trackerId),
+  ],
+);
+
+/** Papers, append-only by use: a renewal is a new row; the latest of each kind counts. */
+export const vehicleDocuments = pgTable(
+  "vehicle_documents",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id),
+    /** A key from the organization's vehicle document list. */
+    kind: text("kind").notNull(),
+    number: text("number").notNull(),
+    issuer: text("issuer").notNull(),
+    expiresOn: date("expires_on").notNull(),
+    recordedBy: uuid("recorded_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [
+    index("vehicle_documents_vehicle_idx").on(t.vehicleId, t.kind, t.createdAt),
+  ],
+);
+
+export const driverStatus = pgEnum("driver_status", ["active", "suspended"]);
+
+export const drivers = pgTable(
+  "drivers",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    phone: text("phone").notNull(),
+    licenceNumber: text("licence_number").notNull(),
+    licenceExpiresOn: date("licence_expires_on").notNull(),
+    inductedOn: date("inducted_on"),
+    employer: text("employer"),
+    status: driverStatus("status").notNull().default("active"),
+    suspendedReason: text("suspended_reason"),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("drivers_licence_key").on(t.licenceNumber),
+    uniqueIndex("drivers_phone_key").on(t.phone),
+  ],
+);
+
+export const vehiclePositions = pgTable(
+  "vehicle_positions",
+  {
+    id: bigserial("id", { mode: "number" }).primaryKey(),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id),
+    lat: numeric("lat", { precision: 9, scale: 6 }).notNull(),
+    lng: numeric("lng", { precision: 9, scale: 6 }).notNull(),
+    speedKph: numeric("speed_kph", { precision: 5, scale: 1 }),
+    recordedAt: timestamp("recorded_at", { withTimezone: true }).notNull(),
+    receivedAt: timestamp("received_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("vehicle_positions_vehicle_idx").on(t.vehicleId, t.recordedAt)],
+);
+
+// ── Stations and LPG plants ────────────────────────────────────────────────
+/** Who works at which site. Station and plant actions are limited to them. */
+export const userSites = pgTable(
+  "user_sites",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+  },
+  (t) => [primaryKey({ columns: [t.userId, t.siteId] })],
+);
+
+export const pumps = pgTable(
+  "pumps",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+    tankId: uuid("tank_id")
+      .notNull()
+      .references(() => tanks.id),
+    code: text("code").notNull(),
+    /** The meter when the pump was set up; later shifts start from the last close. */
+    openingMeter: numeric("opening_meter", {
+      precision: 14,
+      scale: 2,
+    }).notNull(),
+    active: boolean("active").notNull().default(true),
+    createdAt: created(),
+  },
+  (t) => [uniqueIndex("pumps_site_code_key").on(t.siteId, t.code)],
+);
+
+export const shiftStatus = pgEnum("shift_status", [
+  "balanced",
+  "variance_pending",
+  "variance_accepted",
+  "variance_rejected",
+  "banked",
+]);
+
+export const shifts = pgTable(
+  "shifts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+    shiftDate: date("shift_date").notNull(),
+    period: text("period").notNull(),
+    status: shiftStatus("status").notNull(),
+    /** What the meters and fills say should have been taken. */
+    expected: numeric("expected", { precision: 18, scale: 2 }).notNull(),
+    cash: numeric("cash", { precision: 18, scale: 2 }).notNull(),
+    pos: numeric("pos", { precision: 18, scale: 2 }).notNull(),
+    transfer: numeric("transfer", { precision: 18, scale: 2 }).notNull(),
+    /** Declared less expected: negative is short. */
+    cashVariance: numeric("cash_variance", {
+      precision: 18,
+      scale: 2,
+    }).notNull(),
+    /** Each tank: book after sales, the dip, the difference, within tolerance or not. */
+    tankCheck: jsonb("tank_check")
+      .$type<
+        {
+          tankId: string;
+          code: string;
+          productCode: string;
+          book: number;
+          dip: number;
+          variance: number;
+          within: boolean;
+        }[]
+      >()
+      .notNull(),
+    notes: text("notes"),
+    closedBy: uuid("closed_by")
+      .notNull()
+      .references(() => users.id),
+    bank: text("bank"),
+    bankRef: text("bank_ref"),
+    bankedAmount: numeric("banked_amount", { precision: 18, scale: 2 }),
+    bankedOn: date("banked_on"),
+    bankedBy: uuid("banked_by").references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [
+    uniqueIndex("shifts_number_key").on(t.number),
+    /** A shift is closed once. */
+    uniqueIndex("shifts_site_date_period_key").on(
+      t.siteId,
+      t.shiftDate,
+      t.period,
+    ),
+  ],
+);
+
+export const shiftPumps = pgTable(
+  "shift_pumps",
+  {
+    shiftId: uuid("shift_id")
+      .notNull()
+      .references(() => shifts.id, { onDelete: "cascade" }),
+    pumpId: uuid("pump_id")
+      .notNull()
+      .references(() => pumps.id),
+    opening: numeric("opening", { precision: 14, scale: 2 }).notNull(),
+    closing: numeric("closing", { precision: 14, scale: 2 }).notNull(),
+    quantity: numeric("quantity", { precision: 14, scale: 2 }).notNull(),
+    price: numeric("price", { precision: 18, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.shiftId, t.pumpId] })],
+);
+
+export const cylinderStatus = pgEnum("cylinder_status", [
+  "active",
+  "condemned",
+]);
+
+export const cylinders = pgTable(
+  "cylinders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    serial: text("serial").notNull(),
+    sizeKg: numeric("size_kg", { precision: 5, scale: 1 }).notNull(),
+    owner: text("owner").notNull(),
+    testDueOn: date("test_due_on").notNull(),
+    status: cylinderStatus("status").notNull().default("active"),
+    condemnedReason: text("condemned_reason"),
+    createdAt: created(),
+  },
+  (t) => [uniqueIndex("cylinders_serial_key").on(t.serial)],
+);
+
+export const fills = pgTable(
+  "fills",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    siteId: uuid("site_id")
+      .notNull()
+      .references(() => sites.id),
+    tankId: uuid("tank_id")
+      .notNull()
+      .references(() => tanks.id),
+    cylinderId: uuid("cylinder_id")
+      .notNull()
+      .references(() => cylinders.id),
+    kg: numeric("kg", { precision: 6, scale: 2 }).notNull(),
+    price: numeric("price", { precision: 18, scale: 2 }).notNull(),
+    amount: numeric("amount", { precision: 18, scale: 2 }).notNull(),
+    /** The shift whose takings include it; set when the shift closes. */
+    shiftId: uuid("shift_id").references(() => shifts.id),
+    filledBy: uuid("filled_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+  },
+  (t) => [index("fills_site_shift_idx").on(t.siteId, t.shiftId)],
+);
+
+// ── People and payroll ──────────────────────────────────────────────────────
+const amount = (name: string) =>
+  numeric(name, { precision: 18, scale: 2 }).notNull();
+
+/** Pay bands: a person's monthly gross must sit inside their grade's band. */
+export const grades = pgTable("grades", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  minMonthly: amount("min_monthly"),
+  maxMonthly: amount("max_monthly"),
+  createdAt: created(),
+  updatedAt: updated(),
+});
+
+export const employeeStatus = pgEnum("employee_status", [
+  "onboarding",
+  "active",
+  "exited",
+]);
+
+export const employees = pgTable(
+  "employees",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull().unique(),
+    name: text("name").notNull(),
+    email: text("email"),
+    phone: text("phone"),
+    department: text("department").notNull(),
+    jobTitle: text("job_title").notNull(),
+    siteId: uuid("site_id").references(() => sites.id),
+    gradeId: uuid("grade_id")
+      .notNull()
+      .references(() => grades.id),
+    employmentType: text("employment_type").notNull(),
+    status: employeeStatus("status").notNull().default("onboarding"),
+    startDate: date("start_date").notNull(),
+    exitDate: date("exit_date"),
+    exitReason: text("exit_reason"),
+    // Monthly pay.
+    basic: amount("basic"),
+    housing: amount("housing"),
+    transport: amount("transport"),
+    other: amount("other"),
+    bankName: text("bank_name"),
+    accountNumber: text("account_number"),
+    accountName: text("account_name"),
+    pfa: text("pfa"),
+    rsaPin: text("rsa_pin"),
+    taxId: text("tax_id"),
+    taxState: text("tax_state").notNull(),
+    nhfOptIn: boolean("nhf_opt_in").notNull().default(false),
+    annualRent: amount("annual_rent").default("0"),
+    activatedBy: uuid("activated_by").references(() => users.id),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [index("employees_status_idx").on(t.status)],
+);
+
+export const payrollStatus = pgEnum("payroll_status", [
+  "draft",
+  "submitted",
+  "approved",
+  "rejected",
+  "paid",
+]);
+
+export const payrollRuns = pgTable("payroll_runs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  number: text("number").notNull(),
+  /** YYYY-MM; one run per month. */
+  period: text("period").notNull().unique(),
+  status: payrollStatus("status").notNull().default("draft"),
+  headcount: integer("headcount").notNull(),
+  gross: amount("gross"),
+  net: amount("net"),
+  paye: amount("paye"),
+  pensionEmployee: amount("pension_employee"),
+  pensionEmployer: amount("pension_employer"),
+  nhf: amount("nhf"),
+  nsitf: amount("nsitf"),
+  itf: amount("itf"),
+  /** Gross plus the employer's pension and levies. */
+  employerCost: amount("employer_cost"),
+  /** The rules the run was worked with, so a later settings change can't alter it. */
+  rules: jsonb("rules").notNull(),
+  note: text("note"),
+  approvalId: uuid("approval_id"),
+  preparedBy: uuid("prepared_by")
+    .notNull()
+    .references(() => users.id),
+  calculatedAt: timestamp("calculated_at", { withTimezone: true }).notNull(),
+  paidOn: date("paid_on"),
+  bankRef: text("bank_ref"),
+  paidBy: uuid("paid_by").references(() => users.id),
+  createdAt: created(),
+});
+
+export const payrollLines = pgTable(
+  "payroll_lines",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    runId: uuid("run_id")
+      .notNull()
+      .references(() => payrollRuns.id, { onDelete: "cascade" }),
+    employeeId: uuid("employee_id")
+      .notNull()
+      .references(() => employees.id),
+    // As at the run, so payslips and bank files don't change afterwards.
+    number: text("number").notNull(),
+    name: text("name").notNull(),
+    department: text("department").notNull(),
+    jobTitle: text("job_title").notNull(),
+    bankName: text("bank_name"),
+    accountNumber: text("account_number"),
+    accountName: text("account_name"),
+    pfa: text("pfa"),
+    rsaPin: text("rsa_pin"),
+    taxState: text("tax_state").notNull(),
+    /** Share of the month worked: 1 unless they joined or left in it. */
+    factor: numeric("factor", { precision: 6, scale: 4 }).notNull(),
+    basic: amount("basic"),
+    housing: amount("housing"),
+    transport: amount("transport"),
+    other: amount("other"),
+    gross: amount("gross"),
+    pensionEmployee: amount("pension_employee"),
+    nhf: amount("nhf"),
+    rentRelief: amount("rent_relief"),
+    paye: amount("paye"),
+    net: amount("net"),
+    pensionEmployer: amount("pension_employer"),
+    nsitf: amount("nsitf"),
+    itf: amount("itf"),
+    flags: jsonb("flags").$type<string[]>().notNull(),
+  },
+  (t) => [uniqueIndex("payroll_lines_run_employee").on(t.runId, t.employeeId)],
+);
+
+// ── Workshop: work orders and what they cost ────────────────────────────────
+export const workOrderStatus = pgEnum("work_order_status", [
+  "draft",
+  "submitted",
+  "approved",
+  "rejected",
+  "overrun",
+  "completed",
+  "cancelled",
+]);
+
+type WorkLineRow = {
+  kind: "part" | "labour" | "outside";
+  description: string;
+  quantity: number;
+  unitCost: number;
+};
+
+export const workOrders = pgTable(
+  "work_orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    number: text("number").notNull(),
+    vehicleId: uuid("vehicle_id")
+      .notNull()
+      .references(() => vehicles.id),
+    kind: text("kind").notNull(),
+    title: text("title").notNull(),
+    description: text("description"),
+    status: workOrderStatus("status").notNull().default("draft"),
+    offRoad: boolean("off_road").notNull(),
+    /** When this work order took the truck off the road, and when it went back. */
+    heldFrom: timestamp("held_from", { withTimezone: true }),
+    releasedAt: timestamp("released_at", { withTimezone: true }),
+    odometerKm: integer("odometer_km"),
+    supplierName: text("supplier_name"),
+    estimateLines: jsonb("estimate_lines").$type<WorkLineRow[]>(),
+    estimate: numeric("estimate", { precision: 18, scale: 2 }),
+    actualLines: jsonb("actual_lines").$type<WorkLineRow[]>(),
+    partsCost: numeric("parts_cost", { precision: 18, scale: 2 }),
+    labourCost: numeric("labour_cost", { precision: 18, scale: 2 }),
+    outsideCost: numeric("outside_cost", { precision: 18, scale: 2 }),
+    actualCost: numeric("actual_cost", { precision: 18, scale: 2 }),
+    completedOn: date("completed_on"),
+    completionNote: text("completion_note"),
+    cancelReason: text("cancel_reason"),
+    approvalId: uuid("approval_id").references(() => approvalRequests.id),
+    openedBy: uuid("opened_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: created(),
+    updatedAt: updated(),
+  },
+  (t) => [
+    uniqueIndex("work_orders_number_key").on(t.number),
+    index("work_orders_vehicle_idx").on(t.vehicleId, t.createdAt),
+    index("work_orders_status_idx").on(t.status),
+    index("work_orders_completed_idx").on(t.completedOn),
+  ],
 );

@@ -9,17 +9,24 @@ import type {
   CreditTermsInput,
   CustomerSiteInput,
   updateCustomerSchema,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import { and, asc, eq, sql } from "drizzle-orm";
 import type { z } from "zod";
 import type { Db, Tx } from "../db/client.js";
-import { customerSites, customers, salesOrders } from "../db/schema.js";
+import {
+  customerLedger,
+  customerSites,
+  customers,
+  salesOrders,
+} from "../db/schema.js";
 import { ApprovalHandlers } from "../approvals/approval-handlers.js";
 import { ApprovalsService } from "../approvals/approvals.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
+import { businessDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { DB } from "../common/tokens.js";
+import { money } from "../common/org.js";
 
 type Customer = typeof customers.$inferSelect;
 type TermsPayload = {
@@ -35,7 +42,7 @@ const view = (c: Customer) => ({
   openingBalance: num(c.openingBalance)!,
 });
 
-const naira = (n: number) => `₦${n.toLocaleString("en-NG")}`;
+const round2 = (n: number) => Math.round(n * 100) / 100;
 
 @Injectable()
 export class CustomersService {
@@ -71,33 +78,41 @@ export class CustomersService {
   }
 
   /**
-   * What the customer owes and has committed: the opening balance (until
-   * Finance's ledger replaces it) plus released credit orders not yet
-   * invoiced. `available` is what is left under the limit.
+   * What the customer owes and has committed: the ledger balance (invoices
+   * and opening balance less receipts) plus orders released but not yet
+   * invoiced. `available` is what is left under the limit; for a prepaid
+   * customer the limit is zero, so `available` is money paid and not yet used.
    */
   async creditPosition(exec: Db | Tx, c: Customer) {
+    const [{ balance }] = await exec
+      .select({
+        balance: sql<string>`coalesce(sum(${customerLedger.amount}), 0)`,
+      })
+      .from(customerLedger)
+      .where(eq(customerLedger.customerId, c.id));
+    // Released orders count until invoiced; part-delivered ones count only
+    // what isn't invoiced yet, since those invoices are on the ledger.
     const [{ open }] = await exec
       .select({
-        open: sql<string>`coalesce(sum(${salesOrders.total}), 0)`,
+        open: sql<string>`coalesce(sum(${salesOrders.total} - coalesce((select sum(i.total) from invoices i where i.order_id = "sales_orders"."id"), 0)), 0)`,
       })
       .from(salesOrders)
       .where(
         and(
           eq(salesOrders.customerId, c.id),
-          eq(salesOrders.terms, "credit"),
           eq(salesOrders.status, "released"),
         ),
       );
-    const limit = num(c.creditLimit)!;
-    const balance = num(c.openingBalance)!;
+    const limit = c.terms === "credit" ? num(c.creditLimit)! : 0;
+    const bal = Number(balance);
     const openOrders = Number(open);
-    const exposure = balance + openOrders;
+    const exposure = round2(bal + openOrders);
     return {
       limit,
-      balance,
+      balance: bal,
       openOrders,
       exposure,
-      available: limit - exposure,
+      available: round2(limit - exposure),
     };
   }
 
@@ -115,6 +130,16 @@ export class CustomersService {
         .insert(customers)
         .values({ ...fields, openingBalance: String(openingBalance) })
         .returning();
+      if (openingBalance !== 0)
+        await tx.insert(customerLedger).values({
+          customerId: c.id,
+          kind: "opening",
+          ref: "OPENING",
+          entryDate: businessDate(),
+          dueOn: businessDate(),
+          amount: String(openingBalance),
+          createdBy: user.id,
+        });
       await this.audit.record(tx, actor, {
         action: "customer.created",
         entityType: "customer",
@@ -184,14 +209,14 @@ export class CustomersService {
     };
     const summary =
       payload.terms === "credit"
-        ? `credit, ${naira(payload.creditLimit)} limit, ${payload.creditDays} days`
+        ? `credit, ${money(payload.creditLimit)} limit, ${payload.creditDays} days`
         : "prepaid";
     return this.approvals.createIn(
       tx,
       {
         kind: "credit_limit",
         ref: c.code,
-        title: `${c.name}: ${summary} (now ${c.terms === "credit" ? `${naira(num(c.creditLimit)!)} limit` : "prepaid"})`,
+        title: `${c.name}: ${summary} (now ${c.terms === "credit" ? `${money(num(c.creditLimit)!)} limit` : "prepaid"})`,
         amount: payload.creditLimit,
         reason: input.reason,
       },

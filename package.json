@@ -1,27 +1,28 @@
 {
-  "name": "cocean-erp-api",
+  "name": "qorrix-erp-api",
   "version": "0.1.0",
   "private": true,
-  "description": "Cocean ERP backend: identity, permissions, audit, approvals and module services (NestJS + PostgreSQL).",
+  "description": "Qorrix ERP backend: identity, permissions, audit, approvals and module services (NestJS + PostgreSQL).",
   "type": "module",
   "packageManager": "pnpm@10.13.1",
   "engines": {
     "node": ">=22.12"
   },
   "scripts": {
-    "build": "pnpm --filter @cocean/contracts build && tsc -p tsconfig.build.json",
+    "build": "pnpm --filter @qorrix-erp/contracts build && tsc -p tsconfig.build.json",
     "start": "node dist/main.js",
-    "dev": "pnpm --filter @cocean/contracts build && tsx watch src/main.ts",
-    "typecheck": "pnpm --filter @cocean/contracts build && tsc -p tsconfig.json --noEmit",
-    "test": "pnpm --filter @cocean/contracts build && vitest run",
+    "dev": "pnpm --filter @qorrix-erp/contracts build && tsx watch src/main.ts",
+    "typecheck": "pnpm --filter @qorrix-erp/contracts build && tsc -p tsconfig.json --noEmit",
+    "test": "pnpm --filter @qorrix-erp/contracts build && vitest run",
     "format": "prettier --write .",
     "db:up": "docker compose up -d db",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "pnpm build && node dist/db/migrate.js",
-    "db:seed": "node dist/db/seed.js"
+    "db:seed": "node dist/db/seed.js",
+    "db:seed:sample": "node dist/db/seed-sample.js"
   },
   "dependencies": {
-    "@cocean/contracts": "workspace:*",
+    "@qorrix-erp/contracts": "workspace:*",
     "@nestjs/common": "12.3.2",
     "@nestjs/core": "12.3.2",
     "@nestjs/jwt": "12.0.3",

@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   Inject,
@@ -6,11 +7,13 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import type {
-  ApprovalKind,
-  CreateApprovalInput,
-  DecideApprovalInput,
-} from "@cocean/contracts";
+import {
+  ROLES,
+  type ApprovalKind,
+  type CreateApprovalInput,
+  type DecideApprovalInput,
+  type PolicyBandsInput,
+} from "@qorrix-erp/contracts";
 import {
   and,
   asc,
@@ -26,7 +29,8 @@ import {
   type SQL,
 } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.js";
-import { approvalPolicies, approvalRequests } from "../db/schema.js";
+import { alias } from "drizzle-orm/pg-core";
+import { approvalPolicies, approvalRequests, users } from "../db/schema.js";
 import { AuditService } from "../audit/audit.service.js";
 import { ApprovalHandlers } from "./approval-handlers.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
@@ -35,6 +39,18 @@ import { DB } from "../common/tokens.js";
 
 type Row = typeof approvalRequests.$inferSelect;
 const view = (r: Row) => ({ ...r, amount: num(r.amount)! });
+const requester = alias(users, "requester");
+const decider = alias(users, "decider");
+/** A request with the names of who raised and who decided it. */
+const named = (r: {
+  request: Row;
+  requestedByName: string | null;
+  decidedByName: string | null;
+}) => ({
+  ...view(r.request),
+  requestedByName: r.requestedByName,
+  decidedByName: r.decidedByName,
+});
 
 @Injectable()
 export class ApprovalsService {
@@ -222,22 +238,29 @@ export class ApprovalsService {
     }
     if (scope === "raised")
       where.push(eq(approvalRequests.requestedBy, user.id));
-    const rows = await this.db
-      .select()
-      .from(approvalRequests)
+    const rows = await this.withNames()
       .where(where.length ? and(...where) : undefined)
       .orderBy(desc(approvalRequests.createdAt))
       .limit(200);
-    return rows.map(view);
+    return rows.map(named);
   }
 
   async get(id: string) {
-    const [r] = await this.db
-      .select()
-      .from(approvalRequests)
-      .where(eq(approvalRequests.id, id));
+    const [r] = await this.withNames().where(eq(approvalRequests.id, id));
     if (!r) throw new NotFoundException("Approval request not found");
-    return view(r);
+    return named(r);
+  }
+
+  private withNames() {
+    return this.db
+      .select({
+        request: approvalRequests,
+        requestedByName: requester.name,
+        decidedByName: decider.name,
+      })
+      .from(approvalRequests)
+      .leftJoin(requester, eq(requester.id, approvalRequests.requestedBy))
+      .leftJoin(decider, eq(decider.id, approvalRequests.decidedBy));
   }
 
   async policies() {
@@ -254,5 +277,61 @@ export class ApprovalsService {
       minAmount: num(p.minAmount)!,
       maxAmount: num(p.maxAmount),
     }));
+  }
+
+  /**
+   * Replaces who decides a kind of request, by amount. Old bands are kept
+   * (inactive) for the record; requests already waiting keep the approver
+   * they were routed to. Every band's approver must be able to decide.
+   */
+  async setPolicies(kind: ApprovalKind, input: PolicyBandsInput, actor: Actor) {
+    const deciders = new Set(
+      (Object.entries(ROLES) as [string, { permissions: readonly string[] }][])
+        .filter(([, r]) => r.permissions.includes("approvals.decide"))
+        .map(([k]) => k),
+    );
+    const bad = input.bands.findIndex((b) => !deciders.has(b.approver));
+    if (bad >= 0)
+      throw new BadRequestException({
+        message: "Validation failed",
+        issues: [
+          {
+            path: `bands.${bad}.approver`,
+            message: "That role can't decide requests",
+          },
+        ],
+      });
+    return this.db.transaction(async (tx) => {
+      const before = await tx
+        .update(approvalPolicies)
+        .set({ active: false })
+        .where(
+          and(
+            eq(approvalPolicies.kind, kind),
+            eq(approvalPolicies.active, true),
+          ),
+        )
+        .returning();
+      await tx.insert(approvalPolicies).values(
+        input.bands.map((b) => ({
+          kind,
+          minAmount: String(b.min),
+          maxAmount: b.max === null ? null : String(b.max),
+          approverRole: b.approver,
+        })),
+      );
+      await this.audit.record(tx, actor, {
+        action: "approval_policy.changed",
+        entityType: "approval_policy",
+        entityId: kind,
+        before: before.map((p) => ({
+          min: num(p.minAmount),
+          max: num(p.maxAmount),
+          approver: p.approverRole,
+        })),
+        after: input.bands,
+      });
+      return this.policies();
+    });
   }
 }

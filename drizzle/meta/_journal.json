@@ -22,6 +22,62 @@
       "when": 1793267705015,
       "tag": "0002_sales_customers",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793270024549,
+      "tag": "0003_finance_receivables",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793270527499,
+      "tag": "0004_procurement",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1793273046077,
+      "tag": "0005_product_movement",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1793301173802,
+      "tag": "0006_fleet",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1793349776938,
+      "tag": "0007_stations_lpg",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794915514890,
+      "tag": "0008_organization",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794929579872,
+      "tag": "0009_people_payroll",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794946816231,
+      "tag": "0010_workshop",
+      "breakpoints": true
     }
   ]
 }

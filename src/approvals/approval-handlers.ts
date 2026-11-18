@@ -1,5 +1,5 @@
 import { Injectable } from "@nestjs/common";
-import type { ApprovalKind } from "@cocean/contracts";
+import type { ApprovalKind } from "@qorrix-erp/contracts";
 import type { Tx } from "../db/client.js";
 import type { approvalRequests } from "../db/schema.js";
 import type { Actor } from "../common/auth-context.js";

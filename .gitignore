@@ -9,3 +9,4 @@ coverage/
 .DS_Store
 *.pem
 *.key
+node-compile-cache/

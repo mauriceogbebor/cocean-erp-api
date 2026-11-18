@@ -14,7 +14,7 @@ import {
   updateProductSchema,
   updateSiteSchema,
   type CreateSiteInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import type { z } from "zod";
 import {
   type Actor,
@@ -39,7 +39,8 @@ export class MasterDataController {
   @Post("sites")
   @RequirePermissions("sites.manage")
   createSite(
-    @Body(new ZodPipe(createSiteSchema)) body: CreateSiteInput,
+    @Body(new ZodPipe(createSiteSchema, { state: "region" }))
+    body: CreateSiteInput,
     @CurrentActor() actor: Actor,
   ) {
     return this.md.createSite(body, actor);
@@ -49,7 +50,8 @@ export class MasterDataController {
   @RequirePermissions("sites.manage")
   updateSite(
     @Param("id", ParseUUIDPipe) id: string,
-    @Body(new ZodPipe(updateSiteSchema)) body: z.infer<typeof updateSiteSchema>,
+    @Body(new ZodPipe(updateSiteSchema, { state: "region" }))
+    body: z.infer<typeof updateSiteSchema>,
     @CurrentActor() actor: Actor,
   ) {
     return this.md.updateSite(id, body, actor);

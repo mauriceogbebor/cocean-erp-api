@@ -7,6 +7,6 @@ export default defineConfig({
   dbCredentials: {
     url:
       process.env.DATABASE_URL ??
-      "postgres://cocean:cocean@localhost:5432/cocean",
+      "postgres://erp:erp@localhost:5432/erp",
   },
 });

@@ -16,11 +16,34 @@ import type { Env } from "./config/env.js";
 import type { Db } from "./db/client.js";
 import { CustomersController } from "./customers/customers.controller.js";
 import { CustomersService } from "./customers/customers.service.js";
+import { FinanceController } from "./finance/finance.controller.js";
+import { ReceivablesService } from "./finance/receivables.service.js";
+import { FleetController } from "./fleet/fleet.controller.js";
+import { FleetService } from "./fleet/fleet.service.js";
+import { WorkshopController } from "./workshop/workshop.controller.js";
+import { WorkshopService } from "./workshop/workshop.service.js";
+import { TrackingService } from "./fleet/tracking.service.js";
+import { LpgService } from "./stations/lpg.service.js";
+import { StationsController } from "./stations/stations.controller.js";
+import { StationsService } from "./stations/stations.service.js";
 import { HealthController } from "./health/health.controller.js";
 import { MasterDataController } from "./master-data/master-data.controller.js";
 import { MasterDataService } from "./master-data/master-data.service.js";
+import { PeopleController } from "./people/people.controller.js";
+import { PayrollService } from "./people/payroll.service.js";
+import { PeopleService } from "./people/people.service.js";
+import { OrganizationController } from "./organization/organization.controller.js";
+import { OrganizationService } from "./organization/organization.service.js";
 import { OrdersController } from "./orders/orders.controller.js";
 import { OrdersService } from "./orders/orders.service.js";
+import { BillsService } from "./procurement/bills.service.js";
+import { ProcurementController } from "./procurement/procurement.controller.js";
+import { PurchaseOrdersService } from "./procurement/purchase-orders.service.js";
+import { VendorsService } from "./procurement/vendors.service.js";
+import { LiftingsController } from "./logistics/liftings.controller.js";
+import { LiftingsService } from "./logistics/liftings.service.js";
+import { StockController } from "./stock/stock.controller.js";
+import { StockService } from "./stock/stock.service.js";
 import { PricingController } from "./pricing/pricing.controller.js";
 import { PricingService } from "./pricing/pricing.service.js";
 import { UsersController } from "./users/users.controller.js";
@@ -41,14 +64,16 @@ export class AppModule {
           secret: env.JWT_SECRET,
           signOptions: {
             expiresIn: `${env.ACCESS_TOKEN_MINUTES}m`,
-            issuer: "cocean-erp",
+            issuer: "qorrix-erp",
           },
-          verifyOptions: { issuer: "cocean-erp" },
+          verifyOptions: { issuer: "qorrix-erp" },
         }),
       ],
       controllers: [
         HealthController,
         AuthController,
+        OrganizationController,
+        PeopleController,
         AccessController,
         UsersController,
         AuditController,
@@ -57,12 +82,22 @@ export class AppModule {
         CustomersController,
         PricingController,
         OrdersController,
+        FinanceController,
+        ProcurementController,
+        StockController,
+        LiftingsController,
+        FleetController,
+        WorkshopController,
+        StationsController,
       ],
       providers: [
         { provide: ENV, useValue: env },
         { provide: DB, useValue: db },
         AccessService,
         AuditService,
+        OrganizationService,
+        PeopleService,
+        PayrollService,
         AuthService,
         UsersService,
         MasterDataService,
@@ -71,6 +106,17 @@ export class AppModule {
         CustomersService,
         PricingService,
         OrdersService,
+        ReceivablesService,
+        VendorsService,
+        PurchaseOrdersService,
+        BillsService,
+        StockService,
+        LiftingsService,
+        FleetService,
+        WorkshopService,
+        TrackingService,
+        StationsService,
+        LpgService,
         // Order matters: who you are, then what you may do.
         { provide: APP_GUARD, useClass: AuthGuard },
         { provide: APP_GUARD, useClass: PermissionsGuard },

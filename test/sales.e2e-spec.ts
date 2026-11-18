@@ -1,27 +1,27 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { INestApplication } from "@nestjs/common";
-import { lagosDate } from "../src/common/dates.js";
+import { businessDate } from "../src/common/dates.js";
 import { ADMIN, as, freshDatabase, login, startApp } from "./harness.js";
 
 let app: INestApplication;
 const people = {
   sales: {
-    email: "tunde@cocean.test",
+    email: "tunde@erp.test",
     name: "Tunde Adeyemi",
     roles: ["sales"],
   },
   finance: {
-    email: "amina@cocean.test",
+    email: "amina@erp.test",
     name: "Amina Bello",
     roles: ["finance"],
   },
-  md: { email: "kelechi@cocean.test", name: "Kelechi Amadi", roles: ["md"] },
+  md: { email: "kelechi@erp.test", name: "Kelechi Amadi", roles: ["md"] },
   ops: {
-    email: "chidi@cocean.test",
+    email: "chidi@erp.test",
     name: "Chidi Okafor",
     roles: ["operations"],
   },
-  depot: { email: "bayo@cocean.test", name: "Bayo Lawal", roles: ["depot"] },
+  depot: { email: "bayo@erp.test", name: "Bayo Lawal", roles: ["depot"] },
 };
 type Who = keyof typeof people;
 const PASSWORD = "a-good-long-password";
@@ -200,7 +200,7 @@ describe("price lists", () => {
     const created = await u.sales
       .post("/v1/price-lists", {
         code: "PL-2026-10",
-        validFrom: lagosDate(),
+        validFrom: businessDate(),
         lines: [
           { productCode: "AGO", price: 1240 },
           { productCode: "PMS", price: 950 },
@@ -259,7 +259,7 @@ describe("price lists", () => {
     await u.sales
       .post("/v1/price-lists", {
         code: "PL-2026-11",
-        validFrom: lagosDate(),
+        validFrom: businessDate(),
         lines: [{ productCode: "AGO", price: 9999 }],
       })
       .expect(201);
@@ -272,7 +272,7 @@ describe("price lists", () => {
     await u.sales
       .post("/v1/price-lists", {
         code: "PL-2026-12",
-        validFrom: lagosDate(),
+        validFrom: businessDate(),
         lines: [{ productCode: "XYZ", price: 10 }],
       })
       .expect(422);

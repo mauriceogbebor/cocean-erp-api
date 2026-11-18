@@ -22,6 +22,45 @@ export const PERMISSIONS = {
   "orders.read": "See sales orders",
   "orders.create": "Create sales orders and request credit overrides",
   "orders.cancel": "Cancel orders that haven't been released",
+  "orders.release": "Release an order once payment or credit covers it",
+  "finance.read": "See receipts, invoices, statements and receivables",
+  "receipts.manage": "Record customer payments and reverse wrong ones",
+  "invoices.create": "Invoice released orders",
+  "vendors.read": "See suppliers",
+  "vendors.manage": "Create suppliers and request bank detail changes",
+  "purchase_orders.read":
+    "See purchase orders, goods received and supplier invoices",
+  "purchase_orders.manage":
+    "Draft purchase orders and submit them for approval",
+  "goods.receive": "Record goods received against a purchase order",
+  "bills.manage":
+    "Enter and match supplier invoices; request and record payment",
+  "stock.read": "See tanks, stock on hand and dips",
+  "tanks.manage": "Set up tanks and their opening stock",
+  "stock.dip": "Record tank dips",
+  "liftings.read": "See loadings and deliveries",
+  "liftings.plan": "Plan trucks against released orders",
+  "liftings.load": "Load, meter and seal trucks at the depot",
+  "deliveries.resolve": "Investigate and close delivery exceptions",
+  "fleet.read": "See vehicles, drivers, their papers and positions",
+  "fleet.manage":
+    "Register vehicles and drivers, record papers, hold and suspend",
+  "workshop.read": "See work orders, repair costs and servicing",
+  "workshop.manage":
+    "Open work orders, price them, record the work done and cancel them",
+  "stations.read": "See stations, pumps, shifts and LPG fills",
+  "stations.manage": "Set up pumps and assign people to sites",
+  "stations.operate":
+    "Receive product, close shifts and fill cylinders at your own site",
+  "takings.bank": "Record shift takings lodged at the bank",
+  "people.read": "See staff records and their pay",
+  "people.manage":
+    "Add staff, set grades and pay, activate joiners and record leavers",
+  "payroll.read": "See payroll runs, payslips and remittances",
+  "payroll.prepare": "Calculate a month's payroll and submit it for approval",
+  "payroll.pay": "Download the bank file and record payroll as paid",
+  "settings.manage":
+    "Change the organization's name, logo, formats, tolerances and lists",
 } as const;
 
 export type Permission = keyof typeof PERMISSIONS;

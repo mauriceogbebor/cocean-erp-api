@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from "@nestjs/common";
-import type { CreateOrderInput } from "@cocean/contracts";
+import type { CreateOrderInput } from "@qorrix-erp/contracts";
 import { and, asc, desc, eq, inArray, type SQL } from "drizzle-orm";
 import type { Db, Tx } from "../db/client.js";
 import {
@@ -19,16 +19,16 @@ import { ApprovalHandlers } from "../approvals/approval-handlers.js";
 import { ApprovalsService } from "../approvals/approvals.service.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor, AuthUser } from "../common/auth-context.js";
-import { lagosDate } from "../common/dates.js";
+import { businessDate } from "../common/dates.js";
 import { num } from "../common/num.js";
 import { nextNumber } from "../common/numbering.js";
 import { DB } from "../common/tokens.js";
 import { CustomersService } from "../customers/customers.service.js";
 import { PricingService } from "../pricing/pricing.service.js";
+import { money } from "../common/org.js";
 
 type Status = (typeof salesOrders.$inferSelect)["status"];
-const naira = (n: number) => `₦${n.toLocaleString("en-NG")}`;
-/** Kobo-safe money arithmetic: work in kobo, store naira with 2 decimals. */
+/** Exact money arithmetic: work in minor units, store major units with 2 decimals. */
 const toKobo = (n: number) => Math.round(n * 100);
 const fromKobo = (k: number) => (k / 100).toFixed(2);
 
@@ -83,7 +83,7 @@ export class OrdersService {
           `Delivery site ${badSite} is not an active site of ${c.name}`,
         );
 
-      const pl = await this.pricing.inForce(tx, lagosDate());
+      const pl = await this.pricing.inForce(tx, businessDate());
       if (!pl)
         throw new UnprocessableEntityException(
           "No approved price list is in force today. Orders can't be priced.",
@@ -156,15 +156,13 @@ export class OrdersService {
           releasedAt: status === "released" ? new Date() : null,
         })
         .returning();
-      await tx
-        .insert(salesOrderLines)
-        .values(
-          lines.map(({ amountKobo, ...l }) => ({
-            ...l,
-            orderId: o.id,
-            amount: fromKobo(amountKobo),
-          })),
-        );
+      await tx.insert(salesOrderLines).values(
+        lines.map(({ amountKobo, ...l }) => ({
+          ...l,
+          orderId: o.id,
+          amount: fromKobo(amountKobo),
+        })),
+      );
       await this.audit.record(tx, actor, {
         action: "order.created",
         entityType: "order",
@@ -260,10 +258,10 @@ export class OrdersService {
         {
           kind: "credit_override",
           ref: o.number,
-          title: `${c.name} · ${o.number} on credit, ${naira(num(o.total)!)}`,
+          title: `${c.name} · ${o.number} on credit, ${money(num(o.total)!)}`,
           amount: num(o.total)!,
           reason: check
-            ? `${reason} (limit ${naira(check.limit)}, exposure with this order ${naira(check.exposure)}, ${naira(check.over)} over)`
+            ? `${reason} (limit ${money(check.limit)}, exposure with this order ${money(check.exposure)}, ${money(check.over)} over)`
             : reason,
         },
         user.id,
@@ -281,12 +279,58 @@ export class OrdersService {
     });
   }
 
+  /**
+   * Finance releases an order once money or credit covers it: a prepaid
+   * order after the customer has paid, or a held credit order after they
+   * have paid down. The same check as at entry, run again now.
+   */
+  async release(id: string, actor: Actor) {
+    return this.db.transaction(async (tx) => {
+      const o = await this.lock(tx, id);
+      if (o.status !== "awaiting_payment" && o.status !== "credit_hold")
+        throw new ConflictException(
+          `Only an order awaiting payment or on credit hold can be released (this one is ${o.status})`,
+        );
+      const [c] = await tx
+        .select()
+        .from(customers)
+        .where(eq(customers.id, o.customerId))
+        .for("update");
+      const pos = await this.customers.creditPosition(tx, c);
+      const total = num(o.total)!;
+      const short = Math.round((pos.exposure + total - pos.limit) * 100) / 100;
+      if (short > 0)
+        throw new ConflictException(
+          c.terms === "prepaid"
+            ? `${c.name} has ${money(Math.max(0, -pos.exposure))} paid and unused; this order needs ${money(total)}. ${money(short)} short.`
+            : `Still ${money(short)} over ${c.name}'s ${money(pos.limit)} limit. Record their payment first, or ask for an override.`,
+        );
+      await tx
+        .update(salesOrders)
+        .set({
+          // Same shape as the check at entry: exposure includes this order.
+          creditCheck: {
+            limit: pos.limit,
+            balance: pos.balance,
+            openOrders: pos.openOrders,
+            thisOrder: total,
+            exposure: Math.round((pos.exposure + total) * 100) / 100,
+            over: 0,
+            releasedBy: "finance",
+          },
+        })
+        .where(eq(salesOrders.id, id));
+      await this.setStatus(tx, id, "released", actor, "order.released");
+      return this.get(id, tx);
+    });
+  }
+
   async cancel(id: string, reason: string, actor: Actor) {
     return this.db.transaction(async (tx) => {
       const o = await this.lock(tx, id);
-      if (o.status === "released")
+      if (o.status === "released" || o.status === "invoiced")
         throw new ConflictException(
-          "This order is released to Logistics and can't be cancelled here",
+          `This order is ${o.status} and can't be cancelled here`,
         );
       if (o.status === "override_pending")
         throw new ConflictException(

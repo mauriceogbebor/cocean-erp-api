@@ -6,10 +6,10 @@ import {
   NotFoundException,
 } from "@nestjs/common";
 import { hash } from "@node-rs/argon2";
-import type { CreateUserInput, RoleKey } from "@cocean/contracts";
+import type { CreateUserInput, RoleKey } from "@qorrix-erp/contracts";
 import { asc, eq, sql } from "drizzle-orm";
 import type { Db } from "../db/client.js";
-import { sessions, userRoles, users } from "../db/schema.js";
+import { sessions, userRoles, userSites, users } from "../db/schema.js";
 import { AuditService } from "../audit/audit.service.js";
 import type { Actor } from "../common/auth-context.js";
 import { DB } from "../common/tokens.js";
@@ -36,12 +36,14 @@ export class UsersService {
       .from(users)
       .orderBy(asc(users.name));
     const rs = await this.db.select().from(userRoles);
+    const ss = await this.db.select().from(userSites);
     return us.map((u) => ({
       ...u,
       roles: rs
         .filter((r) => r.userId === u.id)
         .map((r) => r.roleKey)
         .sort(),
+      siteIds: ss.filter((s) => s.userId === u.id).map((s) => s.siteId),
     }));
   }
 
@@ -124,6 +126,42 @@ export class UsersService {
           .where(eq(sessions.userId, id));
       await this.audit.record(tx, actor, {
         action: status === "disabled" ? "user.disabled" : "user.enabled",
+        entityType: "user",
+        entityId: id,
+      });
+      return u;
+    });
+  }
+
+  /**
+   * An administrator sets a temporary password for someone who is locked out
+   * or has forgotten theirs. Their sessions end and the lock is lifted; they
+   * change it once signed in.
+   */
+  async resetPassword(id: string, password: string, actor: Actor) {
+    if (actor.userId === id)
+      throw new BadRequestException(
+        "Change your own password from your account page",
+      );
+    const passwordHash = await hash(password);
+    return this.db.transaction(async (tx) => {
+      const [u] = await tx
+        .update(users)
+        .set({
+          passwordHash,
+          failedLogins: 0,
+          lockedUntil: null,
+          updatedAt: new Date(),
+        })
+        .where(eq(users.id, id))
+        .returning(publicFields);
+      if (!u) throw new NotFoundException("User not found");
+      await tx
+        .update(sessions)
+        .set({ revokedAt: new Date() })
+        .where(eq(sessions.userId, id));
+      await this.audit.record(tx, actor, {
+        action: "user.password_reset",
         entityType: "user",
         entityId: id,
       });

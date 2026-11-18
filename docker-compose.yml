@@ -5,15 +5,15 @@ services:
   db:
     image: postgres:16
     environment:
-      POSTGRES_USER: cocean
-      POSTGRES_PASSWORD: cocean
-      POSTGRES_DB: cocean
+      POSTGRES_USER: erp
+      POSTGRES_PASSWORD: erp
+      POSTGRES_DB: erp
     ports:
       - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cocean"]
+      test: ["CMD-SHELL", "pg_isready -U erp"]
       interval: 5s
       retries: 10
 
@@ -24,10 +24,11 @@ services:
       db:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgres://cocean:cocean@db:5432/cocean
+      DATABASE_URL: postgres://erp:erp@db:5432/erp
       JWT_SECRET: local-development-secret-not-for-production
       WEB_ORIGIN: http://localhost:3000
-      SEED_ADMIN_EMAIL: admin@cocean.local
+      SEED_ORG_NAME: Your organization
+      SEED_ADMIN_EMAIL: admin@example.com
       SEED_ADMIN_PASSWORD: change-me-now-please
     ports:
       - "4000:4000"

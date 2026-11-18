@@ -12,11 +12,16 @@ export async function createApp(env: Env) {
   const { db, pool } = createDb(env.DATABASE_URL);
   const app = await NestFactory.create<NestExpressApplication>(
     AppModule.register(env, db),
-    { logger: env.NODE_ENV === "test" ? false : ["log", "warn", "error"] },
+    {
+      logger: env.NODE_ENV === "test" ? false : ["log", "warn", "error"],
+      bodyParser: false,
+    },
   );
   app.set("trust proxy", 1);
   app.use(helmet());
   app.use(requestId);
+  // Room for an organization's logo in its settings; nothing else is near it.
+  app.useBodyParser("json", { limit: "512kb" });
   app.enableCors({ origin: env.WEB_ORIGIN.split(","), credentials: true });
   app.setGlobalPrefix("v1", { exclude: ["health"] });
   app.enableShutdownHooks();

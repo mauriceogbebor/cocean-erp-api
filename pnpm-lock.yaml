@@ -11,7 +11,7 @@ importers:
 
   .:
     dependencies:
-      '@cocean/contracts':
+      '@qorrix-erp/contracts':
         specifier: workspace:*
         version: link:packages/contracts
       '@nestjs/common':

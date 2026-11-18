@@ -1,9 +1,9 @@
 import type { Permission } from "./permissions";
 
 /**
- * Starting role catalogue, matching the people in the prototype. Cocean
- * confirms the real roles, scopes and segregation rules in the first weeks;
- * roles live in the database, so changing them needs no code change.
+ * Starting role catalogue for a petroleum distributor. Each organization
+ * adjusts roles, scopes and segregation rules when it goes live; roles live
+ * in the database, so changing them needs no code change.
  */
 export type RoleDef = {
   name: string;
@@ -16,8 +16,16 @@ const commercialRead: Permission[] = [
   "customers.read",
   "prices.read",
   "orders.read",
+  "finance.read",
 ];
 const requester: Permission[] = [...read, "approvals.request"];
+const buyingRead: Permission[] = ["vendors.read", "purchase_orders.read"];
+const movementRead: Permission[] = [
+  "stock.read",
+  "liftings.read",
+  "fleet.read",
+  "stations.read",
+];
 
 export const ROLES = {
   admin: {
@@ -27,6 +35,7 @@ export const ROLES = {
     permissions: [
       "users.read",
       "users.manage",
+      "settings.manage",
       "roles.read",
       "audit.read",
       "sites.read",
@@ -35,6 +44,10 @@ export const ROLES = {
       "products.manage",
       "approvals.read",
       "approvals.policies.manage",
+      "stock.read",
+      "tanks.manage",
+      "stations.read",
+      "stations.manage",
     ],
   },
   md: {
@@ -44,10 +57,15 @@ export const ROLES = {
     permissions: [
       ...requester,
       ...commercialRead,
+      ...buyingRead,
+      ...movementRead,
       "approvals.decide",
       "audit.read",
       "users.read",
       "roles.read",
+      "people.read",
+      "payroll.read",
+      "workshop.read",
     ],
   },
   executive: {
@@ -57,8 +75,11 @@ export const ROLES = {
     permissions: [
       ...requester,
       ...commercialRead,
+      ...buyingRead,
+      ...movementRead,
       "approvals.decide",
       "audit.read",
+      "workshop.read",
     ],
   },
   finance: {
@@ -70,6 +91,17 @@ export const ROLES = {
       ...commercialRead,
       "approvals.decide",
       "audit.read",
+      "receipts.manage",
+      "invoices.create",
+      "orders.release",
+      ...buyingRead,
+      ...movementRead,
+      "bills.manage",
+      "takings.bank",
+      "people.read",
+      "payroll.read",
+      "payroll.pay",
+      "workshop.read",
     ],
   },
   sales: {
@@ -82,17 +114,29 @@ export const ROLES = {
       "prices.manage",
       "orders.create",
       "orders.cancel",
+      "liftings.read",
     ],
   },
   procurement: {
     name: "Procurement lead",
     description: "Sources and buys at the best compliant price.",
-    permissions: requester,
+    permissions: [
+      ...requester,
+      ...buyingRead,
+      "vendors.manage",
+      "purchase_orders.manage",
+    ],
   },
   hr: {
     name: "HR and payroll manager",
     description: "Keeps staff records and prepares payroll.",
-    permissions: requester,
+    permissions: [
+      ...requester,
+      "people.read",
+      "people.manage",
+      "payroll.read",
+      "payroll.prepare",
+    ],
   },
   operations: {
     name: "Operations supervisor",
@@ -102,33 +146,55 @@ export const ROLES = {
       "orders.read",
       "customers.read",
       "approvals.decide",
+      ...movementRead,
+      "liftings.plan",
+      "workshop.read",
     ],
   },
   depot: {
     name: "Loading supervisor",
-    description: "Loads, seals, weighs and releases at the depot.",
-    permissions: read,
+    description:
+      "Loads, seals, weighs and releases at the depot; receives deliveries.",
+    permissions: [
+      ...read,
+      ...movementRead,
+      "purchase_orders.read",
+      "goods.receive",
+      "stock.dip",
+      "liftings.load",
+    ],
   },
   fleet: {
     name: "Fleet and maintenance manager",
     description: "Keeps trucks legal, serviced and registered.",
-    permissions: requester,
+    permissions: [
+      ...requester,
+      ...movementRead,
+      "fleet.manage",
+      "workshop.read",
+      "workshop.manage",
+    ],
   },
   station: {
     name: "Station manager",
     description: "Runs a retail station's tanks, pumps and takings.",
-    permissions: read,
+    permissions: [...read, "stock.read", "stations.read", "stations.operate"],
   },
   security: {
     name: "Security and HSE lead",
     description:
       "Investigates custody cases; signs inductions and calibrations.",
-    permissions: [...read, "audit.read"],
+    permissions: [...read, ...movementRead, "audit.read", "deliveries.resolve"],
   },
   lpg: {
     name: "LPG plant manager",
     description: "Runs an LPG plant: safety, filling, receipt and day close.",
-    permissions: requester,
+    permissions: [
+      ...requester,
+      "stock.read",
+      "stations.read",
+      "stations.operate",
+    ],
   },
   weighbridge: {
     name: "Weighbridge operator",

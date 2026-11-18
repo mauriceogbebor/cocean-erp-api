@@ -16,7 +16,7 @@ import {
   type CreateCustomerInput,
   type CreditTermsInput,
   type CustomerSiteInput,
-} from "@cocean/contracts";
+} from "@qorrix-erp/contracts";
 import type { z } from "zod";
 import {
   type Actor,
@@ -49,7 +49,8 @@ export class CustomersController {
   @Post()
   @RequirePermissions("customers.manage")
   create(
-    @Body(new ZodPipe(createCustomerSchema)) body: CreateCustomerInput,
+    @Body(new ZodPipe(createCustomerSchema, { phone: "phone", tin: "taxId" }))
+    body: CreateCustomerInput,
     @CurrentUser() user: AuthUser,
     @CurrentActor() actor: Actor,
   ) {
@@ -60,7 +61,7 @@ export class CustomersController {
   @RequirePermissions("customers.manage")
   update(
     @Param("id", ParseUUIDPipe) id: string,
-    @Body(new ZodPipe(updateCustomerSchema))
+    @Body(new ZodPipe(updateCustomerSchema, { phone: "phone", tin: "taxId" }))
     body: z.infer<typeof updateCustomerSchema>,
     @CurrentActor() actor: Actor,
   ) {
@@ -83,7 +84,13 @@ export class CustomersController {
   @RequirePermissions("customers.manage")
   addSite(
     @Param("id", ParseUUIDPipe) id: string,
-    @Body(new ZodPipe(customerSiteSchema)) body: CustomerSiteInput,
+    @Body(
+      new ZodPipe(customerSiteSchema, {
+        receiverPhone: "phone",
+        state: "region",
+      }),
+    )
+    body: CustomerSiteInput,
     @CurrentActor() actor: Actor,
   ) {
     return this.customers.addSite(id, body, actor);

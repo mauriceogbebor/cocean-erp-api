@@ -10,6 +10,8 @@ const schema = z.object({
   WEB_ORIGIN: z.string().default("http://localhost:3000"),
   ACCESS_TOKEN_MINUTES: z.coerce.number().int().positive().default(15),
   REFRESH_TOKEN_DAYS: z.coerce.number().int().positive().default(7),
+  /** Shared secret the tracker provider sends with positions. Unset: positions are refused. */
+  TRACKER_API_KEY: z.string().min(32).optional(),
 });
 export type Env = z.infer<typeof schema>;
 

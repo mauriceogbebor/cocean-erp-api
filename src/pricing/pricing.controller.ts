@@ -10,7 +10,7 @@ import {
   Put,
   Query,
 } from "@nestjs/common";
-import { priceListSchema, type PriceListInput } from "@cocean/contracts";
+import { priceListSchema, type PriceListInput } from "@qorrix-erp/contracts";
 import { z } from "zod";
 import {
   type Actor,

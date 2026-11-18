@@ -8,7 +8,7 @@ import {
 } from "@nestjs/common";
 import { Reflector } from "@nestjs/core";
 import { JwtService } from "@nestjs/jwt";
-import type { Permission } from "@cocean/contracts";
+import type { Permission } from "@qorrix-erp/contracts";
 import { AccessService } from "../access/access.service.js";
 import { type AppRequest, IS_PUBLIC, PERMISSIONS_KEY } from "./auth-context.js";
 

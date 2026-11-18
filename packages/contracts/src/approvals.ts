@@ -11,6 +11,9 @@ export const APPROVAL_KINDS = {
   variance: "Stock or cash variance",
   credit_limit: "Change to a customer's credit terms or limit",
   price_list: "Price list",
+  vendor_bank: "Supplier bank details",
+  shift_variance: "Station or plant shift that doesn't balance",
+  other: "Other request needing sign-off",
 } as const;
 export type ApprovalKind = keyof typeof APPROVAL_KINDS;
 export const approvalKinds = Object.keys(APPROVAL_KINDS) as [
@@ -19,9 +22,9 @@ export const approvalKinds = Object.keys(APPROVAL_KINDS) as [
 ];
 
 /**
- * Starting authority bands, in naira. Placeholders from the prototype: Cocean
- * sets the real limits, and they are stored in the database so they can be
- * changed without a release. A band applies when min <= amount < max.
+ * Starting authority bands, in the organization's currency. Each
+ * organization sets its own limits; they are stored in the database so they
+ * can be changed without a release. A band applies when min <= amount < max.
  */
 export type PolicyDef = {
   kind: ApprovalKind;
@@ -50,4 +53,9 @@ export const DEFAULT_POLICIES: PolicyDef[] = [
   { kind: "credit_limit", min: 0, max: 50_000_000, approver: "finance" },
   { kind: "credit_limit", min: 50_000_000, max: null, approver: "md" },
   { kind: "price_list", min: 0, max: null, approver: "md" },
+  { kind: "vendor_bank", min: 0, max: null, approver: "finance" },
+  { kind: "shift_variance", min: 0, max: 1_000_000, approver: "operations" },
+  { kind: "shift_variance", min: 1_000_000, max: null, approver: "executive" },
+  { kind: "other", min: 0, max: 1_000_000, approver: "operations" },
+  { kind: "other", min: 1_000_000, max: null, approver: "executive" },
 ];

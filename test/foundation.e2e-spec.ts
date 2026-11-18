@@ -15,22 +15,28 @@ let app: INestApplication;
 let admin: ReturnType<typeof as>;
 const people = {
   sales: {
-    email: "tunde@cocean.test",
+    email: "tunde@erp.test",
     name: "Tunde Adeyemi",
     roles: ["sales"],
   },
   finance: {
-    email: "amina@cocean.test",
+    email: "amina@erp.test",
     name: "Amina Bello",
     roles: ["finance"],
   },
-  md: { email: "kelechi@cocean.test", name: "Kelechi Amadi", roles: ["md"] },
+  md: { email: "kelechi@erp.test", name: "Kelechi Amadi", roles: ["md"] },
+  exec: {
+    email: "adaeze@erp.test",
+    name: "Adaeze Nwosu",
+    roles: ["executive"],
+  },
 };
 const PASSWORD = "a-good-long-password";
 const tokens: Record<keyof typeof people, string> = {
   sales: "",
   finance: "",
   md: "",
+  exec: "",
 };
 
 beforeAll(async () => {
@@ -63,7 +69,7 @@ describe("health and sign-in", () => {
       .expect(401);
     const b = await request(app.getHttpServer())
       .post("/v1/auth/login")
-      .send({ email: "nobody@cocean.test", password: "wrong-password" })
+      .send({ email: "nobody@erp.test", password: "wrong-password" })
       .expect(401);
     expect(a.body.message).toBe(b.body.message);
   });
@@ -71,7 +77,7 @@ describe("health and sign-in", () => {
   it("locks an account after five failed attempts", async () => {
     await admin
       .post("/v1/users", {
-        email: "locked@cocean.test",
+        email: "locked@erp.test",
         name: "Lock Test",
         password: PASSWORD,
         roles: ["depot"],
@@ -80,11 +86,11 @@ describe("health and sign-in", () => {
     for (let i = 0; i < 5; i++)
       await request(app.getHttpServer())
         .post("/v1/auth/login")
-        .send({ email: "locked@cocean.test", password: "nope-nope" })
+        .send({ email: "locked@erp.test", password: "nope-nope" })
         .expect(401);
     const r = await request(app.getHttpServer())
       .post("/v1/auth/login")
-      .send({ email: "locked@cocean.test", password: PASSWORD })
+      .send({ email: "locked@erp.test", password: PASSWORD })
       .expect(401);
     expect(r.body.message).toMatch(/Too many failed attempts/);
   });
@@ -111,6 +117,18 @@ describe("health and sign-in", () => {
       .post("/v1/auth/refresh")
       .send({ refreshToken: second.body.refreshToken })
       .expect(401);
+  });
+
+  it("rotates a token once even when two refreshes arrive together", async () => {
+    const t = await login(app, people.md.email, PASSWORD);
+    const both = await Promise.all(
+      [1, 2].map(() =>
+        request(app.getHttpServer())
+          .post("/v1/auth/refresh")
+          .send({ refreshToken: t.refreshToken }),
+      ),
+    );
+    expect(both.map((r) => r.status).sort()).toEqual([200, 401]);
   });
 });
 
@@ -169,13 +187,13 @@ describe("permissions and audit", () => {
   it("signs a disabled user out everywhere at once", async () => {
     const created = await admin
       .post("/v1/users", {
-        email: "leaver@cocean.test",
+        email: "leaver@erp.test",
         name: "Peter Nwachukwu",
         password: PASSWORD,
         roles: ["depot"],
       })
       .expect(201);
-    const t = await login(app, "leaver@cocean.test", PASSWORD);
+    const t = await login(app, "leaver@erp.test", PASSWORD);
     await admin
       .patch(`/v1/users/${created.body.id}/status`, { status: "disabled" })
       .expect(200);
@@ -188,12 +206,14 @@ describe("permissions and audit", () => {
 });
 
 describe("approvals", () => {
+  // Kinds raised from their own records (orders, payroll) are refused here;
+  // an "other" request is raised directly.
   const credit = {
-    kind: "payroll",
-    ref: "PAY-2026-10",
-    title: "October payroll, 214 staff",
-    amount: 37_200_000,
-    reason: "Variance to September explained: two starters, one leaver.",
+    kind: "other",
+    ref: "WO-2026-090",
+    title: "Engine overhaul for RIV-430-BN",
+    amount: 3_720_000,
+    reason: "Two quotes attached; the cheaper workshop can start Monday.",
   };
   let id = "";
 
@@ -208,33 +228,33 @@ describe("approvals", () => {
     expect(r.body.message).toMatch(/raised from the record/);
   });
 
-  it("routes payroll to the MD", async () => {
+  it("routes a large work order to the Head of Operations", async () => {
     const r = await as(app, tokens.sales)
       .post("/v1/approvals", credit)
       .expect(201);
     expect(r.body).toMatchObject({
-      approverRole: "md",
+      approverRole: "executive",
       status: "pending",
-      amount: 37_200_000,
+      amount: 3_720_000,
     });
     id = r.body.id;
     await as(app, tokens.sales).post("/v1/approvals", credit).expect(409);
   });
 
-  it("routes by amount: a small PO to Finance, a large one to the MD", async () => {
-    const po = {
-      kind: "purchase_order",
+  it("routes by amount: a small work order to Operations, a large one to the Head of Operations", async () => {
+    const wo = {
+      kind: "other",
       title: "Tyres for LAG-552-EP",
       reason: "Truck blocked from dispatch.",
     };
     const small = await as(app, tokens.sales)
-      .post("/v1/approvals", { ...po, ref: "PO-2026-033", amount: 4_860_000 })
+      .post("/v1/approvals", { ...wo, ref: "WO-2026-033", amount: 486_000 })
       .expect(201);
-    expect(small.body.approverRole).toBe("finance");
+    expect(small.body.approverRole).toBe("operations");
     const big = await as(app, tokens.sales)
-      .post("/v1/approvals", { ...po, ref: "PO-2026-034", amount: 46_800_000 })
+      .post("/v1/approvals", { ...wo, ref: "WO-2026-034", amount: 4_680_000 })
       .expect(201);
-    expect(big.body.approverRole).toBe("md");
+    expect(big.body.approverRole).toBe("executive");
   });
 
   it("never lets the maker decide, nor anyone outside the authority", async () => {
@@ -248,23 +268,26 @@ describe("approvals", () => {
     expect(f.body.message).toMatch(/outside your approval authority/);
   });
 
-  it("shows the MD what is waiting for them", async () => {
-    const r = await as(app, tokens.md)
+  it("shows the Head of Operations what is waiting for them", async () => {
+    const r = await as(app, tokens.exec)
       .get("/v1/approvals?scope=mine&status=pending")
       .expect(200);
     expect(r.body.map((a: { ref: string }) => a.ref)).toEqual(
-      expect.arrayContaining(["PAY-2026-10", "PO-2026-034"]),
+      expect.arrayContaining(["WO-2026-090"]),
     );
+    expect(
+      r.body.find((a: { ref: string }) => a.ref === "WO-2026-090"),
+    ).toMatchObject({ requestedByName: "Tunde Adeyemi", decidedByName: null });
     expect(r.body.map((a: { ref: string }) => a.ref)).not.toContain(
-      "PO-2026-033",
+      "WO-2026-033",
     );
   });
 
   it("needs a reason to reject, then records one decision only", async () => {
-    await as(app, tokens.md)
+    await as(app, tokens.exec)
       .post(`/v1/approvals/${id}/decide`, { decision: "rejected" })
       .expect(400);
-    const r = await as(app, tokens.md)
+    const r = await as(app, tokens.exec)
       .post(`/v1/approvals/${id}/decide`, {
         decision: "approved",
         note: "One-off. Review the limit.",
@@ -274,7 +297,7 @@ describe("approvals", () => {
       status: "approved",
       decisionNote: "One-off. Review the limit.",
     });
-    await as(app, tokens.md)
+    await as(app, tokens.exec)
       .post(`/v1/approvals/${id}/decide`, {
         decision: "rejected",
         note: "changed my mind",
@@ -291,13 +314,13 @@ describe("approvals", () => {
 
   it("decides concurrently only once", async () => {
     const r = await as(app, tokens.sales)
-      .post("/v1/approvals", { ...credit, ref: "PAY-2026-11" })
+      .post("/v1/approvals", { ...credit, ref: "WO-2026-091" })
       .expect(201);
     const both = await Promise.all([
-      as(app, tokens.md).post(`/v1/approvals/${r.body.id}/decide`, {
+      as(app, tokens.exec).post(`/v1/approvals/${r.body.id}/decide`, {
         decision: "approved",
       }),
-      as(app, tokens.md).post(`/v1/approvals/${r.body.id}/decide`, {
+      as(app, tokens.exec).post(`/v1/approvals/${r.body.id}/decide`, {
         decision: "approved",
       }),
     ]);
@@ -306,9 +329,9 @@ describe("approvals", () => {
 
   it("lets only the maker withdraw a pending request", async () => {
     const r = await as(app, tokens.sales)
-      .post("/v1/approvals", { ...credit, ref: "PAY-2026-12" })
+      .post("/v1/approvals", { ...credit, ref: "WO-2026-092" })
       .expect(201);
-    await as(app, tokens.md)
+    await as(app, tokens.exec)
       .post(`/v1/approvals/${r.body.id}/withdraw`)
       .expect(403);
     const w = await as(app, tokens.sales)
